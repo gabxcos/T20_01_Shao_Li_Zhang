@@ -3,6 +3,7 @@
 #include <iostream>
 
 #include <opencv2/core/core.hpp>
+#include <opencv2/imgcodecs.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <opencv2/imgproc.hpp>
 
@@ -10,6 +11,43 @@
 
 using namespace cv;
 using namespace std;
+
+Mat& ScanImageAndReduceC(Mat& I) //, const uchar* const table)
+{
+	// accept only char type matrices
+	CV_Assert(I.depth() == CV_8U);
+	int channels = I.channels();
+	int nRows = I.rows;
+	int nCols = I.cols * channels;
+
+	printf("L'immagine e' %dpx per %dpx.\n\n", nCols, nRows);
+
+	bool continuous;
+	if (I.isContinuous())
+	{
+		printf("L'immagine e' continua.\n\n");
+		continuous = true;
+		/*nCols *= nRows;
+		nRows = 1;*/
+	}
+	int i, j;
+	uchar* p;
+	for (i = 0; i < nRows; ++i)
+	{
+		p = continuous ? I.ptr<uchar>(0) : I.ptr<uchar>(i);
+
+		int row_intensity = 0;
+
+		for (j = 0; j < nCols; ++j)
+		{
+			//p[j] = table[p[j]];
+			int intensity = continuous ? (int)p[i*nCols+j] : (int)p[j];
+			row_intensity += (intensity-1);
+		}
+		printf("%d\n", row_intensity);
+	}
+	return I;
+}
 
 int main() {
 	/* Esempio libtiff
@@ -36,11 +74,23 @@ int main() {
 
 	// Esempio OpenCV
 
-	Mat image = Mat::zeros(300, 600, CV_8UC3);
-	circle(image, Point(250, 150), 100, Scalar(0, 255, 128), -100);
-	circle(image, Point(350, 150), 100, Scalar(255, 255, 255), -100);
-	imshow("Display Window", image);
-	waitKey(0);
+	std::string image_path = samples::findFile("sample.tif");
+	Mat img = imread(image_path, IMREAD_GRAYSCALE);
+
+	if (img.empty())
+	{
+		std::cout << "Could not read the image: " << image_path << std::endl;
+		return 1;
+	}
+
+	ScanImageAndReduceC(img);
+
+	imshow("Display window", img);
+	int k = waitKey(0); // Wait for a keystroke in the window
+	/*if (k == 's')
+	{
+		imwrite("sample.png", img);
+	}*/
 
 	return 0;
 }
