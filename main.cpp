@@ -10,6 +10,7 @@ using namespace std;
 int main() {
 	Device dev(6, 21);
 	OpenCVSegmenter service("sample.tif");
-	return service.init() ? 0 : 1;
+	service.init();
+	return service.gridding() ? 0 : 1;
 	//return OpenCVSegmenter::test();
 }
