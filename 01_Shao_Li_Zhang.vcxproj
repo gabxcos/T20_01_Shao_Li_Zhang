@@ -147,7 +147,19 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="Device.cpp" />
+    <ClCompile Include="microArrayMethods\libtiff\LibtiffSegmenter.cpp" />
     <ClCompile Include="main.cpp" />
+    <ClCompile Include="microArrayMethods\opencv\gridding.cpp" />
+    <ClCompile Include="microArrayMethods\opencv\OpenCVSegmenter.cpp" />
+    <ClCompile Include="microArrayMethods\opencv\tests.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="Device.h" />
+    <ClInclude Include="microArrayMethods\libtiff\LibtiffSegmenter.h" />
+    <ClInclude Include="microArrayMethods\opencv\gridding.h" />
+    <ClInclude Include="microArrayMethods\opencv\OpenCVSegmenter.h" />
+    <ClInclude Include="microArrayMethods\opencv\tests.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
