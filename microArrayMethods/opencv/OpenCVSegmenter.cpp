@@ -19,6 +19,9 @@ bool OpenCVSegmenter::init() {
 
 	// Make sure image is 8-bit
 	CV_Assert(img.depth() == CV_8U);
+	// Make 32-bit
+	img.convertTo(img, CV_32FC1, 1.0/255.0);
+
 	setImage(img);
 
 	setChannels(img.channels());
