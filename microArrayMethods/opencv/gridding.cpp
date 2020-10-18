@@ -6,6 +6,7 @@ bool OpenCVSegmenter::gridding() {
 	int width = getWidth();
 	int height = getHeight();
 	bool continuous = isContinuous();
+	vector<int> Hlines, Vlines;
 
 	if (!getProjections(img, &proj)) return false;
 	
@@ -57,10 +58,8 @@ bool OpenCVSegmenter::gridding() {
 		}
 		std::printf("\n\n");
 	}
-
-	getThreshold(signals.H);
 	
-	if (getBinarySignals(&signals, &binarySignals)) {
+	/*if (getBinarySignals(&signals, &binarySignals)) {
 		Mat visualizeV(100, binarySignals.V.cols, CV_32FC1);
 		repeat(binarySignals.V, 100, 1, visualizeV);
 		Mat visualizeH(binarySignals.H.rows, 100, CV_32FC1);
@@ -69,7 +68,18 @@ bool OpenCVSegmenter::gridding() {
 		imshow("V", visualizeV);
 		imshow("H", visualizeH);
 		waitKey(0);
-	}
+	}*/
+
+	Hlines = getHlines(binarySignals.H);
+	Vlines = getVlines(binarySignals.V);
+
+	Mat rgbImage;
+	cvtColor(getImage(), rgbImage, COLOR_GRAY2BGR);
+
+	line(rgbImage, Point(10, 10), Point(1000, 1000), Scalar(255, 0, 0));
+
+	imshow("Image", rgbImage);
+	waitKey(0);
 
 	return true;
 }
@@ -212,26 +222,90 @@ bool calculateSignals(projections init_proj, projections* signals, projections* 
 }
 
 float getThreshold(Mat M) {
-	float L;
+	Mat M_;
+	M.convertTo(M_, CV_8UC1, 255, 0); // checked, converts correctly
+
+	int L;
 	double max, min;
-	minMaxLoc(M, &min, &max);
-	L = (float)max;
+	minMaxLoc(M_, &min, &max);
+	L = (int)max;
 
+	Mat hold_count(1, L+1, CV_32FC1, float(0));
+	int n = 0;
+	for (int i = 0; i < M_.rows; i++) {
+		for (int j = 0; j < M_.cols; j++) {
+			int val = (int)M_.at<uchar>(i, j);
+			hold_count.at<float>(0, val) += 1.0;
+			n++;
+		}
+	}
+	hold_count /= (float)n;
 
+	Mat w(1, L + 1, CV_32FC1, float(0));
+	float temp_w = 0;
 
-	return L;
+	// first-order
+	float u = 0; // mean
+	Mat ut(1, L + 1, CV_32FC1, float(0));
+
+	for (int i = 1; i < (L + 1); i++) {
+		float pi = hold_count.at<float>(0, i);
+		u += pi * i;
+		ut.at<float>(0, i) = u;
+
+		temp_w += pi;
+		w.at<float>(0, i) = temp_w;
+	}
+
+	// second-order
+	float u2 = 0; // mean
+	Mat ut2(1, L + 1, CV_32FC1, float(0));
+
+	for (int i = 1; i < (L + 1); i++) {
+		float pi = hold_count.at<float>(0, i);
+
+		u2 += pi * pow((i - u), 2);
+		// u2 += pow(pi * (i - u), 2); // in Matlab
+		float ut2_temp = 0;
+		for (int j = 1; j < i + 1; j++) {
+			ut2_temp += pi * pow((i - ut.at<float>(0, i)), 2);
+			// ut2_temp += pow(pi * (i - ut.at<float>(0, i)), 2); // in Matlab
+		}
+		ut2_temp = sqrt(ut2_temp / i);
+		ut2.at<float>(0, i) = ut2_temp;
+	}
+	u2 = sqrt(u2 / L);
+
+	Mat d_cand(1, L + 1, CV_32FC1, float(0));
+	for (int i = 0; i < (L + 0); i++) { // varying i=t
+		float w_, ut2_;
+		w_ = w.at<float>(0, i);
+		ut2_ = ut2.at<float>(0, i);
+
+		d_cand.at<float>(0, i) = (float) ((double) u2 * pow((w_ - ut2_), 2) / (w_ * (1.0 - w_)));
+	}
+
+	minMaxLoc(d_cand, &min, &max);
+
+	max /= 255;
+
+	std::printf("\n\nThreshold: %.4f\n\n", max);
+	std::printf("Candidates: ");
+	//for (int i = 1; i < (L + 1); i++) std::printf("%.4f ", d_cand.at<float>(0, i)/255);
+
+	return (float)max;
 }
 
 bool getBinarySignals(projections* signals, projections* binarySignals) {
 
-	float threshH = 0.5 * (float) mean(signals->H)[0];
-	float threshV = 0.5 * (float) mean(signals->V)[0];
+	float threshH = getThreshold(signals->H); // naive: 0.5 * (float) mean(signals->H)[0];
+	float threshV = getThreshold(signals->V); // naive: 0.5 * (float) mean(signals->V)[0];
 
 	// H
 	int height = (signals->H).rows;
 	Mat binH(height, 1, CV_32FC1, float(0));
 	for (int i = 0; i < height; i++) {
-		if (signals->H.at<float>(i, 0) > threshH) binH.at<float>(i, 0) = 255.0;
+		if (signals->H.at<float>(i, 0) > threshH) binH.at<float>(i, 0) = float(255);
 	}
 	binarySignals->H = binH;
 
@@ -239,9 +313,77 @@ bool getBinarySignals(projections* signals, projections* binarySignals) {
 	int width = (signals->V).cols;
 	Mat binV(1, width, CV_32FC1, float(0));
 	for (int i = 0; i < width; i++) {
-		if (signals->V.at<float>(0, i) > threshV) binV.at<float>(0, i) = 255.0;
+		if (signals->V.at<float>(0, i) > threshV) binV.at<float>(0, i) = float(255);
 	}
 	binarySignals->V = binV;
 
 	return true;
+}
+
+vector<int> getHlines(Mat H) {
+	int height = H.rows;
+
+	vector<int> hspot, hlspot;
+
+	int t = 0;
+	int flag = 0;
+
+	for (int i = 0; i < height - 2; i++) {
+		if (flag == 0) {
+			if (H.at<float>(i, 0) > 254 && H.at<float>(i + 1, 0) > 254 && H.at<float>(i + 2, 0) > 254) {
+				hspot.push_back(i);
+				flag++;
+				t = 0;
+			}
+		}
+		if (flag == 1) {
+			t++;
+			if (H.at<float>(i+1, 0) < 1 && t > 4) {
+				hspot.push_back(i);
+				flag = 0;
+			}
+		}
+	}
+
+	hlspot.push_back(hspot.at(0)-1);
+	for (int i = 1; i < (hspot.size() - 1); i += 2) {
+		hlspot.push_back((int)round((hspot.at(i)+hspot.at(i+1)) / 2));
+	}
+	hlspot.push_back(hspot.at(hspot.size() - 1) + 1);
+
+	return hlspot;
+}
+
+vector<int> getVlines(Mat V) {
+	int width = V.cols;
+
+	vector<int> vspot, vlspot;
+
+	int t = 0;
+	int flag = 0;
+
+	for (int i = 0; i < width - 2; i++) {
+		if (flag == 0) {
+			if (V.at<float>(0, i) > 254 && V.at<float>(0, i + 1) > 254 && V.at<float>(0, i + 2) > 254) {
+				vspot.push_back(i);
+				flag++;
+				t = 0;
+			}
+		}
+		if (flag == 1) {
+			t++;
+			if (V.at<float>(0, i + 1) < 1 && t > 4) {
+				vspot.push_back(i);
+				flag = 0;
+			}
+		}
+	}
+
+	vlspot.push_back(vspot.at(0) - 1);
+	for (int i = 1; i < (vspot.size() - 1); i += 2) {
+		vlspot.push_back((int)round((vspot.at(i) + vspot.at(i + 1)) / 2));
+	}
+	vlspot.push_back(vspot.at(vspot.size() - 1) + 1);
+
+	return vlspot;
 }

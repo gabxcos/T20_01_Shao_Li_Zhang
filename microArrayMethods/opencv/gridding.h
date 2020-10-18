@@ -15,5 +15,7 @@ int calculateKernelSize(Mat H, Mat V);
 bool calculateSignals(projections init_proj, projections* signals, projections* recs, int kernelSize);
 float getThreshold(Mat M);
 bool getBinarySignals(projections* signals, projections* binarySignals);
+vector<int> getHlines(Mat H);
+vector<int> getVlines(Mat V);
 
 #endif
