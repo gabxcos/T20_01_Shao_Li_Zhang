@@ -392,9 +392,9 @@ float getThresholdV2(Mat M) {
 	float threshold = (float)maxLoc.x / 255.0;
 
 	std::printf("\n\nThreshold: %.4f\n\n", threshold);
-	std::printf("Candidates: ");
+	/*std::printf("Candidates: ");
 	for (int i = 1; i < 256; i++) std::printf("%.4f ", BCV.at<float>(0, i));
-
+	*/
 	return threshold;
 }
 
