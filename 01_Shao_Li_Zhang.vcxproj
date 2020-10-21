@@ -152,6 +152,7 @@
     <ClCompile Include="main.cpp" />
     <ClCompile Include="microArrayMethods\opencv\gridding.cpp" />
     <ClCompile Include="microArrayMethods\opencv\OpenCVSegmenter.cpp" />
+    <ClCompile Include="microArrayMethods\opencv\preprocessing.cpp" />
     <ClCompile Include="microArrayMethods\opencv\tests.cpp" />
   </ItemGroup>
   <ItemGroup>
@@ -159,6 +160,7 @@
     <ClInclude Include="microArrayMethods\libtiff\LibtiffSegmenter.h" />
     <ClInclude Include="microArrayMethods\opencv\gridding.h" />
     <ClInclude Include="microArrayMethods\opencv\OpenCVSegmenter.h" />
+    <ClInclude Include="microArrayMethods\opencv\preprocessing.h" />
     <ClInclude Include="microArrayMethods\opencv\tests.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />

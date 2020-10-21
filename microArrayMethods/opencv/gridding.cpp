@@ -10,7 +10,8 @@ bool OpenCVSegmenter::gridding() {
 
 	if (!getProjections(img, &proj)) return false;
 	
-	if(isVisualized()){
+
+	/*if(isVisualized()){
 		std::printf("Projections obtained! Testing results:\n\n");
 
 		std::printf("- Calculated rows: %d, actual: %d\n", proj.H.rows, height);
@@ -20,7 +21,7 @@ bool OpenCVSegmenter::gridding() {
 		std::printf("- Horizontal histogram:\n");
 		for (int i = 0; i < height; i++) {
 			float val = proj.H.at<float>(i, 0);
-			for (int m = 0; m < (val*255); m++) std::printf("#");
+			for (int m = 0; m < (val/255); m++) std::printf("#");
 			std::printf(" %.2f\n", val);
 		}
 		std::printf("\n\n\n");
@@ -29,17 +30,14 @@ bool OpenCVSegmenter::gridding() {
 		std::printf("- Vertical histogram:\n");
 		for (int j = 0; j < width; j++) {
 			float val = proj.V.at<float>(0,j);
-			for (int n = 0; n < (val*255); n++) std::printf("#");
+			for (int n = 0; n < (val/255); n++) std::printf("#");
 			std::printf(" %.2f\n", val);
 		}
 		std::printf("\n\n\n");
 
-	}
+	}*/
 
-	int kernelSize = calculateKernelSize(proj.H, proj.V);
-	if (isVisualized()) std::printf("\n\nIdeal kernel size found: %d\n\n", kernelSize);
-
-	if (!calculateSignals(proj, &signals, &reconstructions, kernelSize)) return false;
+	if (!calculateSignals(proj, &signals, &reconstructions)) return false;
 
 	if (isVisualized()) {
 		std::printf("Showing the values for the signals:\n\n");
@@ -59,16 +57,16 @@ bool OpenCVSegmenter::gridding() {
 		std::printf("\n\n");
 	}
 	
-	/*if (getBinarySignals(&signals, &binarySignals)) {
+	if (getBinarySignals(&signals, &binarySignals)) {
 		Mat visualizeV(100, binarySignals.V.cols, CV_32FC1);
-		repeat(binarySignals.V, 100, 1, visualizeV);
+		repeat(signals.V, 100, 1, visualizeV);
 		Mat visualizeH(binarySignals.H.rows, 100, CV_32FC1);
-		repeat(binarySignals.H, 1, 100, visualizeH);
+		repeat(signals.H, 1, 300, visualizeH);
 		imshow("Image", getImage());
 		imshow("V", visualizeV);
 		imshow("H", visualizeH);
 		waitKey(0);
-	}*/
+	}
 
 	Hlines = getHlines(binarySignals.H);
 	Vlines = getVlines(binarySignals.V);
@@ -76,7 +74,10 @@ bool OpenCVSegmenter::gridding() {
 	Mat rgbImage;
 	cvtColor(getImage(), rgbImage, COLOR_GRAY2BGR);
 
-	line(rgbImage, Point(10, 10), Point(1000, 1000), Scalar(255, 0, 0));
+	vector<int>::iterator it;
+
+	for (it = Hlines.begin(); it != Hlines.end(); it++) line(rgbImage, Point(0, *it), Point(width - 1, *it), Scalar(0, 0, 255));
+	for (it = Vlines.begin(); it != Vlines.end(); it++) line(rgbImage, Point(*it, 0), Point(*it, height-1), Scalar(0, 0, 255));
 
 	imshow("Image", rgbImage);
 	waitKey(0);
@@ -117,44 +118,82 @@ bool getProjections(Mat image, projections* proj_set)
 	cv::reduce(image, H, 1, CV_REDUCE_AVG, CV_32FC1);
 	cv::reduce(image, V, 0, CV_REDUCE_AVG, CV_32FC1);
 
+	cv::normalize(H, H, 1.0, 0.0, cv::NORM_MINMAX);
+	cv::normalize(V, V, 1.0, 0.0, cv::NORM_MINMAX);
+
 	proj_set->H = H;
 	proj_set->V = V;
 
 	return true;
 }
 
-int calculateKernelSize(Mat H, Mat V) {
+int calculateKernelSize(Mat M, bool horizontal) {
 	float accum = 0;
 	float num_nonzero = 0;
 	bool wasZero= true, isNonZero;
 
-	// H
-	int height = H.rows;
-	for (int i = 0; i < height; i++) {
-		float val = H.at<float>(i, 0);
-		isNonZero = val > 0;
-		if (isNonZero) accum++;
-		if (!isNonZero && !wasZero) num_nonzero++;
-		wasZero = !isNonZero;
+	if (horizontal) {
+		// H
+		int height = M.rows;
+		for (int i = 0; i < height; i++) {
+			float val = M.at<float>(i, 0);
+			isNonZero = val > 0;
+			if (isNonZero) accum++;
+			if (!isNonZero && !wasZero) num_nonzero++;
+			wasZero = !isNonZero;
+		}
 	}
-
-	// V
-	int width = V.cols;
-	for (int i = 0; i < width; i++) {
-		float val = V.at<float>(0, i);
-		isNonZero = val > 0;
-		if (isNonZero) accum++;
-		if (!isNonZero && !wasZero) num_nonzero++;
-		wasZero = !isNonZero;
+	else {
+		// V
+		int width = M.cols;
+		for (int i = 0; i < width; i++) {
+			float val = M.at<float>(0, i);
+			isNonZero = val > 0;
+			if (isNonZero) accum++;
+			if (!isNonZero && !wasZero) num_nonzero++;
+			wasZero = !isNonZero;
+		}
 	}
-
 	return (int)ceil(accum/num_nonzero);
 }
 
 
 Mat getReconstruction(Mat marker, Mat mask, int kernelSize) {
-	// According to: https://answers.opencv.org/question/35224/morphological-reconstruction/
-	// With "Opening" method from "morphologyEx"
+	// According to: https://answers.opencv.org/question/35224/morphological-reconstruction/	
+	
+	// With "Dilation" method from: https://it.mathworks.com/help/images/understanding-morphological-reconstruction.html
+	Mat m0, m1;
+
+
+	int morph_elem = MORPH_RECT;
+	int morph_size = 2;
+
+	int const max_kernel_size = 21;
+
+	morph_size = 1; // max(morph_size, min(kernelSize, max_kernel_size));
+
+	m1 = marker;
+
+	Mat diff;
+	int iterations = 0;
+
+	do {
+		m0 = m1.clone();
+		dilate(m0, m1, getStructuringElement(morph_elem,
+			Size(2 * morph_size + 1, 2 * morph_size + 1)));/* ,
+			Point(morph_size, morph_size)));*/
+		min(m1, mask, m1);
+
+		diff = m0 != m1;
+
+		iterations++;
+	} while (countNonZero(diff) != 0);
+
+	std::printf("%d iterations needed.\n\n", iterations);
+
+	return m1;
+	
+	/*// With "Opening" method from "morphologyEx"
 	Mat m0, m1;
 
 
@@ -184,11 +223,11 @@ Mat getReconstruction(Mat marker, Mat mask, int kernelSize) {
 	} while (countNonZero(diff)!=0);
 
 	std::printf("%d iterations needed.\n\n", iterations);
-
-	return m1;
+	
+	return m1;*/
 }
 
-bool calculateSignals(projections init_proj, projections* signals, projections* recs, int kernelSize){
+bool calculateSignals(projections init_proj, projections* signals, projections* recs){
 	// N.B. marker = (H - _H), mask = H
 	float H_mean = (float)mean(init_proj.H)[0];
 	float V_mean = (float)mean(init_proj.V)[0];
@@ -205,8 +244,8 @@ bool calculateSignals(projections init_proj, projections* signals, projections* 
 	max(_V, Mat(1, _V.cols, CV_32FC1, float(0)), _V);
 	// ----------------------------------------------------
 
-	H_rec = getReconstruction(_H, init_proj.H, kernelSize);
-	V_rec = getReconstruction(_V, init_proj.V, kernelSize);
+	H_rec = getReconstruction(_H, init_proj.H, calculateKernelSize(_H, true));
+	V_rec = getReconstruction(_V, init_proj.V, calculateKernelSize(_V, false));
 
 	recs->H = H_rec;
 	recs->V = V_rec;
@@ -214,6 +253,8 @@ bool calculateSignals(projections init_proj, projections* signals, projections* 
 	subtract(init_proj.H, H_rec, H_mark);
 	subtract(init_proj.V, V_rec, V_mark);
 
+	cv::normalize(H_mark, H_mark, 1.0, 0.0, cv::NORM_MINMAX);
+	cv::normalize(V_mark, V_mark, 1.0, 0.0, cv::NORM_MINMAX);
 
 	signals->H = H_mark;
 	signals->V = V_mark;
@@ -230,7 +271,7 @@ float getThreshold(Mat M) {
 	minMaxLoc(M_, &min, &max);
 	L = (int)max;
 
-	Mat hold_count(1, L+1, CV_32FC1, float(0));
+	Mat hold_count(1, L + 1, CV_32FC1, float(0));
 	int n = 0;
 	for (int i = 0; i < M_.rows; i++) {
 		for (int j = 0; j < M_.cols; j++) {
@@ -268,7 +309,7 @@ float getThreshold(Mat M) {
 		// u2 += pow(pi * (i - u), 2); // in Matlab
 		float ut2_temp = 0;
 		for (int j = 1; j < i + 1; j++) {
-			ut2_temp += pi * pow((i - ut.at<float>(0, i)), 2);
+			ut2_temp += pi * pow((j - ut.at<float>(0, i)), 2);
 			// ut2_temp += pow(pi * (i - ut.at<float>(0, i)), 2); // in Matlab
 		}
 		ut2_temp = sqrt(ut2_temp / i);
@@ -282,24 +323,85 @@ float getThreshold(Mat M) {
 		w_ = w.at<float>(0, i);
 		ut2_ = ut2.at<float>(0, i);
 
-		d_cand.at<float>(0, i) = (float) ((double) u2 * pow((w_ - ut2_), 2) / (w_ * (1.0 - w_)));
+		d_cand.at<float>(0, i) = u2 * pow((w_ - ut2_), 2) / (w_ * (1.0 - w_));
 	}
 
-	minMaxLoc(d_cand, &min, &max);
+	Point min_loc, max_loc;
+	minMaxLoc(d_cand, &min, &max, &min_loc, &max_loc);
 
-	max /= 255;
+	float my_max = (float)max_loc.x / 255.0;
 
-	std::printf("\n\nThreshold: %.4f\n\n", max);
+	std::printf("\n\nThreshold: %.4f\n\n", my_max);
+	/*std::printf("Candidates: ");
+	for (int i = 1; i < (L + 1); i++) std::printf("%.4f ", d_cand.at<float>(0, i));*/
+
+	return my_max;
+}
+
+float getThresholdV2(Mat M) {
+	// according to: https://www.sciencedirect.com/topics/engineering/class-variance
+	Mat M_;
+	M.convertTo(M_, CV_8UC1, 255, 0); // checked, converts correctly
+	// number of levels = 256 ( 0 - 255 )
+	Mat BCV(1, 256, CV_32FC1, float(0)); // Between-Class Variance
+
+	Mat frequencies(1, 256, CV_32FC1, float(0)); // frequencies
+	int n = M_.rows * M_.cols;
+	for (int i = 0; i < M_.rows; i++) {
+		for (int j = 0; j < M_.cols; j++) {
+			int val = (int)M_.at<uchar>(i, j);
+			frequencies.at<float>(0, val) += 1.0;
+		}
+	}
+	frequencies /= n;
+
+	Mat addFreq(1, 256, CV_32FC1, float(0)); // PI0, PI1 obtained as 1-PI0
+	float cumulativeFreq = 0.0;
+	for (int i = 0; i < 256; i++) {
+		cumulativeFreq += frequencies.at<float>(0, i);
+		addFreq.at<float>(0, i) = cumulativeFreq;
+	}
+
+	Mat mi0(1, 256, CV_32FC1, float(0));
+	Mat mi1(1, 256, CV_32FC1, float(0));
+
+	float temp_mi0 = 0.0;
+	float temp_mi1 = 0.0;
+	for (int i = 1; i < 256; i++) {
+		temp_mi0 += i * frequencies.at<float>(0, i) / addFreq.at<float>(0, i);
+		mi0.at<float>(0, i) = temp_mi0;
+
+		int j = 256 - i;
+		temp_mi1 += j * frequencies.at<float>(0, j) / (1 - addFreq.at<float>(0, j));
+		mi1.at<float>(0, j) = temp_mi1;
+	}
+
+	// get BCV
+	for (int i = 1; i < 256; i++) {
+		float my_pi0, my_mi0, my_mi1;
+		my_pi0 = addFreq.at<float>(0, i);
+		my_mi0 = mi0.at<float>(0, i);
+		my_mi1 = mi1.at<float>(0, i);
+
+		BCV.at<float>(0, i) = my_pi0 * (1 - my_pi0)* pow((my_mi1 - my_mi0), 2);
+	}
+	double min, max;
+	Point minLoc, maxLoc;
+	minMaxLoc(BCV, &min, &max, &minLoc, &maxLoc);
+
+	float threshold = (float)maxLoc.x / 255.0;
+
+	std::printf("\n\nThreshold: %.4f\n\n", threshold);
 	std::printf("Candidates: ");
-	//for (int i = 1; i < (L + 1); i++) std::printf("%.4f ", d_cand.at<float>(0, i)/255);
+	for (int i = 1; i < 256; i++) std::printf("%.4f ", BCV.at<float>(0, i));
 
-	return (float)max;
+	return threshold;
 }
 
 bool getBinarySignals(projections* signals, projections* binarySignals) {
 
-	float threshH = getThreshold(signals->H); // naive: 0.5 * (float) mean(signals->H)[0];
-	float threshV = getThreshold(signals->V); // naive: 0.5 * (float) mean(signals->V)[0];
+	float threshH = getThresholdV2(signals->H); // naive: 0.5 * (float) mean(signals->H)[0];
+	float threshV = getThresholdV2(signals->V); // naive: 0.5 * (float) mean(signals->V)[0];
 
 	// H
 	int height = (signals->H).rows;
@@ -328,7 +430,7 @@ vector<int> getHlines(Mat H) {
 	int t = 0;
 	int flag = 0;
 
-	for (int i = 0; i < height - 2; i++) {
+	for (int i = 0; i < (height - 2); i++) {
 		if (flag == 0) {
 			if (H.at<float>(i, 0) > 254 && H.at<float>(i + 1, 0) > 254 && H.at<float>(i + 2, 0) > 254) {
 				hspot.push_back(i);
@@ -362,7 +464,7 @@ vector<int> getVlines(Mat V) {
 	int t = 0;
 	int flag = 0;
 
-	for (int i = 0; i < width - 2; i++) {
+	for (int i = 0; i < (width - 2); i++) {
 		if (flag == 0) {
 			if (V.at<float>(0, i) > 254 && V.at<float>(0, i + 1) > 254 && V.at<float>(0, i + 2) > 254) {
 				vspot.push_back(i);

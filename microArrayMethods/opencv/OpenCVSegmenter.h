@@ -23,7 +23,7 @@ private:
 	bool visualized; // does the user want to visualize the middle results in a window? for testing purposes
 
 	// Internal status, OpenCV image and its parameters
-	Mat image;
+	Mat originalImage, image;
 	int channels;
 	int width;
 	int height;
@@ -31,8 +31,10 @@ private:
 public:
 	OpenCVSegmenter(std::string path, bool isVisualized=false);
 	bool init();
+	bool resizeImage();
 
 	//Steps
+	bool preprocess();
 	bool gridding();
 
 	// Getters/Setters
@@ -41,6 +43,9 @@ public:
 
 	bool isVisualized() { return visualized; }
 	void setVisualized(bool _visualized) { visualized = _visualized; }
+
+	Mat getOriginalImage() { return originalImage; }
+	void setOriginalImage(Mat _image) { originalImage = _image; }
 
 	Mat getImage() { return image; }
 	void setImage(Mat _image) { image = _image; }
