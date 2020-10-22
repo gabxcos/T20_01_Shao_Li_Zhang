@@ -1,7 +1,8 @@
 #include "OpenCVSegmenter.h"
 
-OpenCVSegmenter::OpenCVSegmenter(std::string path, bool isVisualized) {
+OpenCVSegmenter::OpenCVSegmenter(std::string path, Device _dev, bool isVisualized) {
 	setPath(path);
+	setDevice(_dev);
 	setVisualized(isVisualized);
 }
 

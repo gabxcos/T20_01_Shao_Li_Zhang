@@ -2,8 +2,9 @@
 
 #include <iostream>
 #include <array>
-
 using namespace std;
+
+#include "../../Device.h"
 
 #include <opencv2/core/core.hpp>
 #include <opencv2/core/core_c.h>
@@ -13,13 +14,14 @@ using namespace std;
 using namespace cv;
 
 #include "tests.h"
-# include "gridding.h"
+#include "gridding.h"
 
 class OpenCVSegmenter
 {
 private:
 	// Construction parameters
 	std::string file_path; // the file path of the microArray image file, supposed 8-bit, grayscale, TIFF
+	Device dev; // the Device object to align the Segmenter to
 	bool visualized; // does the user want to visualize the middle results in a window? for testing purposes
 
 	// Internal status, OpenCV image and its parameters
@@ -29,7 +31,7 @@ private:
 	int height;
 	bool continuous;
 public:
-	OpenCVSegmenter(std::string path, bool isVisualized=false);
+	OpenCVSegmenter(std::string path, Device _dev, bool isVisualized=false);
 	bool init();
 	bool resizeImage();
 
@@ -40,6 +42,9 @@ public:
 	// Getters/Setters
 	std::string getPath() { return file_path; };
 	void setPath(std::string path) { file_path = path; }
+
+	Device getDevice() { return dev; }
+	void setDevice(Device _dev) { dev = _dev; }
 
 	bool isVisualized() { return visualized; }
 	void setVisualized(bool _visualized) { visualized = _visualized; }

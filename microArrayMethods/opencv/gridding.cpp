@@ -71,6 +71,8 @@ bool OpenCVSegmenter::gridding() {
 	Hlines = getHlines(binarySignals.H);
 	Vlines = getVlines(binarySignals.V);
 
+	adjustToDevice(getDevice(), getImage(), Hlines, Vlines);
+
 	Mat rgbImage;
 	cvtColor(getImage(), rgbImage, COLOR_GRAY2BGR);
 
@@ -78,6 +80,16 @@ bool OpenCVSegmenter::gridding() {
 
 	for (it = Hlines.begin(); it != Hlines.end(); it++) line(rgbImage, Point(0, *it), Point(width - 1, *it), Scalar(0, 0, 255));
 	for (it = Vlines.begin(); it != Vlines.end(); it++) line(rgbImage, Point(*it, 0), Point(*it, height-1), Scalar(0, 0, 255));
+
+	imshow("Image", rgbImage);
+	waitKey(0);
+
+	adjustGrid(Hlines, Vlines); // ------------------------------------
+
+	cvtColor(getImage(), rgbImage, COLOR_GRAY2BGR);
+
+	for (it = Hlines.begin(); it != Hlines.end(); it++) line(rgbImage, Point(0, *it), Point(width - 1, *it), Scalar(0, 0, 255));
+	for (it = Vlines.begin(); it != Vlines.end(); it++) line(rgbImage, Point(*it, 0), Point(*it, height - 1), Scalar(0, 0, 255));
 
 	imshow("Image", rgbImage);
 	waitKey(0);
@@ -423,6 +435,7 @@ bool getBinarySignals(projections* signals, projections* binarySignals) {
 }
 
 vector<int> getHlines(Mat H) {
+	int mm = 7;
 	int height = H.rows;
 
 	vector<int> hspot, hlspot;
@@ -447,16 +460,17 @@ vector<int> getHlines(Mat H) {
 		}
 	}
 
-	hlspot.push_back(hspot.at(0)-1);
+	hlspot.push_back(max(hspot.at(0) - mm, 0));
 	for (int i = 1; i < (hspot.size() - 1); i += 2) {
 		hlspot.push_back((int)round((hspot.at(i)+hspot.at(i+1)) / 2));
 	}
-	hlspot.push_back(hspot.at(hspot.size() - 1) + 1);
+	hlspot.push_back(min(hspot.at(hspot.size() - 1) + mm, height-1));
 
 	return hlspot;
 }
 
 vector<int> getVlines(Mat V) {
+	int mm = 7;
 	int width = V.cols;
 
 	vector<int> vspot, vlspot;
@@ -481,11 +495,263 @@ vector<int> getVlines(Mat V) {
 		}
 	}
 
-	vlspot.push_back(vspot.at(0) - 1);
+	vlspot.push_back(max(vspot.at(0) - mm, 0));
 	for (int i = 1; i < (vspot.size() - 1); i += 2) {
 		vlspot.push_back((int)round((vspot.at(i) + vspot.at(i + 1)) / 2));
 	}
-	vlspot.push_back(vspot.at(vspot.size() - 1) + 1);
+	vlspot.push_back(min(vspot.at(vspot.size() - 1) + mm, width - 1));
 
 	return vlspot;
+}
+
+bool deleteEmptyLines(Mat image, vector<int>& Hlines, vector<int>& Vlines, bool fourAngles, bool first) {
+	bool hasEliminated = false;
+	float thresh = 0.005;
+
+	int numHlines = Hlines.size(), numVlines = Vlines.size();
+	printf("H = %d, V = %d\n", numHlines, numVlines);
+
+	float minMean = 1.0;
+	int minIndex = -1;
+	float startMean = 1.0, endMean = 1.0;
+	// Horizontal strips
+	std::printf("\nHorizontal elimination:\n");
+	int startV = Vlines[0], endV = Vlines[numVlines - 1];
+	for (int i = 0; i < (numHlines - 1); i++) {
+		Mat testImg = image(Rect(startV, Hlines[i], endV - startV, Hlines[i+1] - Hlines[i]));
+		float curr_mean = mean(testImg)[0];
+		if (i == 0) startMean = curr_mean;
+		else if (i == (numHlines - 2)) endMean = curr_mean;
+		std::printf("- Mean: %.4f\n", curr_mean);
+		if (curr_mean < minMean) {
+			minMean = curr_mean;
+			minIndex = i;
+		}
+	}
+	std::printf("- - Final: mean: %.4f, index: %d\n", minMean, minIndex);
+	if (minMean < thresh && (minIndex == 0 || minIndex == (numHlines - 2))) {
+		std::printf("\nDeleting horizontal line...\n");
+
+		if (minIndex == 0) Hlines.erase(Hlines.begin() + minIndex);
+		else if (minIndex == (numHlines - 2)) Hlines.erase(Hlines.begin() + minIndex + 1);
+
+		numHlines--;
+		hasEliminated = true;
+	}
+	else if (fourAngles) {
+		;
+	}
+	
+
+	minMean = 1.0;
+	minIndex = -1;
+	startMean = 1.0;
+	endMean = 1.0;
+	// Vertical strips
+	std::printf("\nVertical elimination:\n");
+	int startH = Hlines[0], endH = Hlines[numHlines - 1];
+	for (int i = 0; i < (numVlines - 1); i++) {
+		Mat testImg = image(Rect(Vlines[i], startH, Vlines[i + 1] - Vlines[i], endH - startH));
+		float curr_mean = mean(testImg)[0];
+		if (i == 0) startMean = curr_mean;
+		else if (i == (numVlines - 2)) endMean = curr_mean;
+		std::printf("- Mean: %.4f\n", curr_mean);
+		if (curr_mean < minMean) {
+			minMean = curr_mean;
+			minIndex = i;
+		}
+	}
+	std::printf("- - Final: mean: %.4f, index: %d\n", minMean, minIndex);
+	if (minMean < thresh && (minIndex == 0 || minIndex == (numVlines - 2))) {
+		std::printf("\nDeleting vertical line...\n");
+
+		if (minIndex == 0) Vlines.erase(Vlines.begin() + minIndex);
+		else if (minIndex == (numVlines - 2)) Vlines.erase(Vlines.begin() + minIndex + 1);
+
+		numVlines--;
+		hasEliminated = true;
+	}
+	else if (fourAngles) {
+		;
+	}
+	
+
+	if (!first || !hasEliminated) return true;
+	else return deleteEmptyLines(image, Hlines, Vlines, fourAngles, false);
+}
+
+bool adjustToDevice(Device d, Mat image, vector<int>& Hlines, vector<int>& Vlines) {
+
+	int numRows = d.numRows();
+	int numCols = d.numCols();
+
+	int vecNumRows = Vlines.size() - 1;
+	int vecNumCols = Hlines.size() - 1;
+
+	bool hasAngles = d.hasAngles();
+	vector<vector<bool>> angles;
+	if (hasAngles) angles = d.getAngles();
+	bool hasFourAngles = angles[0][0] && angles[0][1] && angles[1][0] && angles[1][1];
+	deleteEmptyLines(image, Hlines, Vlines, hasFourAngles);
+
+	return true;
+}
+
+bool adjustGrid(vector<int> &Hlines, vector<int> &Vlines) { 
+	
+	adjustHgrid(Hlines);
+	// -------------------------------------------------------------------
+	adjustHgrid(Vlines);
+
+	return true;
+}
+
+bool adjustHgrid(vector<int>& Hlines, int flag, int flagend, float errorlimit) {
+	// Valid for both H and V
+	vector<int> Hdist, Herr, HerrLines;
+	float HmeanDist = 0.0, HerrMax = 0.0, HmeanErr = 0.0, HMSE = 0.0;
+	int HmaxErrIndex = -1, numHerr = 0;
+
+	// Horizontal
+	//
+	int numHlines = Hlines.size();
+	for (int i = 0; i < (numHlines - 1); i++) {
+		float dist = Hlines[i + 1] - Hlines[i];
+		Hdist.push_back(dist); // Get distances
+		HmeanDist += dist;
+	}
+	HmeanDist /= (numHlines - 1); // Get mean distance
+	for (int i = 0; i < (numHlines - 1); i++) {
+		float error = abs(Hdist[i] - HmeanDist);
+		if (error > HerrMax) {
+			HerrMax = error;
+			HmaxErrIndex = i;
+		}
+		Herr.push_back(error); // Get errors
+		HmeanErr += error;
+		HMSE += pow(error, 2);
+	}
+	HmeanErr /= (numHlines - 1); // Get mean error
+	HMSE /= (numHlines - 1);
+	HMSE = sqrt(HMSE); // Get MSE
+	// Count number of wrong lines
+	for (int i = 1; i < (numHlines - 2); i++) {
+		if (Herr[i] > (HMSE + HmeanDist / 10)) {
+			numHerr++;
+			HerrLines.push_back(i);
+		}
+	}
+	if (flag == 0) {
+		flagend = numHerr;
+		errorlimit = 2 * HmeanErr;
+	}
+	// Find the maximum error
+	if (flagend > 0 && errorlimit > HmeanErr) {
+		if (numHerr > 0) {
+			if (HmaxErrIndex == 0) { // first line
+				int j = HmaxErrIndex;
+				if (Hdist[j] < HmeanDist) {
+					if (Herr[j + 1] < (HMSE + HmeanDist / 10)) {
+						// redundant grid line 1
+						Hlines[j] = (Hlines[j] + Hlines[j + 1]) / 2;
+						Hlines.erase(Hlines.begin() + j + 1);
+					}else if (Herr[j + 1] > (HMSE + HmeanDist / 10)) {
+						// redundant grid line 2
+						Hlines[j + 1] = (Hlines[j + 1] + Hlines[j + 2]) / 2;
+						Hlines.erase(Hlines.begin() + j + 2);
+					}
+					else if (Hdist[j + 1] > HmeanDist) {
+						// locate at wrong place
+						Hlines[j + 1] = (Hlines[j] + Hlines[j + 2]) / 2;
+					}
+				}
+				else if (Hdist[j] > HmeanDist) {
+					if (Herr[j + 1] < (HMSE + HmeanDist / 10)) {
+						// missing grid line 1
+						Hlines.insert(Hlines.begin() + j + 1, (Hlines[j] + Hlines[j + 1]) / 2);
+					}
+					else if (Herr[j + 1] > (HMSE + HmeanDist / 10)) {
+						// missing grid line 2
+						Hlines[j + 1] = Hlines[j] + (Hlines[j + 2] - Hlines[j]) / 3;
+						Hlines.insert(Hlines.begin() + j + 2, Hlines[j] + 2 * (Hlines[j + 2] - Hlines[j]) / 3);
+					}
+					else if (Hdist[j + 1] < HmeanDist) {
+						// locate at wrong place
+						Hlines[j + 1] = (Hlines[j] + Hlines[j + 2]) / 2;
+					}
+				}
+			}
+			else if (HmaxErrIndex == (numHlines - 2)) { // last line
+				int j = HmaxErrIndex;
+				if (Hdist[j] < HmeanDist) {
+					if (Herr[j - 1] < (HMSE + HmeanDist / 10)) {
+						// redundant grid line 1
+						Hlines[j] = (Hlines[j] + Hlines[j + 1]) / 2;
+						Hlines.erase(Hlines.begin() + j + 1);
+					}
+					else if (Herr[j - 1] > (HMSE + HmeanDist / 10)) {
+						// redundant grid line 2
+						Hlines[j - 1] = (Hlines[j - 1] + Hlines[j]) / 2;
+						Hlines.erase(Hlines.begin() + j);
+					}
+					else if (Hdist[j - 1] > HmeanDist) {
+						// locate at wrong place
+						Hlines[j] = (Hlines[j - 1] + Hlines[j + 1]) / 2;
+					}
+				}
+				else if (Hdist[j] > HmeanDist) {
+					if (Herr[j - 1] < (HMSE + HmeanDist / 10)) {
+						// missing grid line 1
+						Hlines.insert(Hlines.begin() + j + 1, (Hlines[j] + Hlines[j + 1]) / 2);
+					}
+					else if (Herr[j - 1] > (HMSE + HmeanDist / 10)) {
+						// missing grid line 2
+						Hlines[j] = Hlines[j - 1] + (Hlines[j + 1] - Hlines[j - 1]) / 3;
+						Hlines.insert(Hlines.begin() + j + 1, Hlines[j - 1] + 2 * (Hlines[j + 1] - Hlines[j - 1]) / 3);
+					}
+					else if (Hdist[j - 1] < HmeanDist) {
+						// locate at wrong place
+						Hlines[j] = (Hlines[j - 1] + Hlines[j + 1]) / 2;
+					}
+				}
+			}
+			else { // internal line, left side
+				int j = HmaxErrIndex;
+				float thresh = (HMSE + HmeanDist / 10);
+				if (Hdist[j] < HmeanDist) {
+					if ((Herr[j - 1] < thresh && Herr[j - 1] < thresh) || Hdist[j + 1] < HmeanDist) {
+						// redundant grid line 1
+						Hlines[j] = (Hlines[j] + Hlines[j + 1]) / 2;
+						Hlines.erase(Hlines.begin() + j + 1);
+					}
+					else if (Herr[j - 1] > thresh || Herr[j + 1] > thresh) {
+						// redundant grid line 2
+						Hlines[j + 1] = (Hlines[j + 1] + Hlines[j + 2]) / 2;
+						Hlines.erase(Hlines.begin() + j + 2);
+					}
+				}
+				else if (Hdist[j] > HmeanDist) {
+					if (Herr[j - 1] < thresh && Herr[j + 1] < thresh) {
+						// missing grid line 1
+						Hlines.insert(Hlines.begin() + j + 1, (Hlines[j] + Hlines[j + 1]) / 2);
+					}
+					else if (Herr[j - 1] > thresh || Herr[j + 1] > thresh) {
+						// missing grid line 2
+						if (Hdist[j - 1] > HmeanDist) {
+							Hlines[j] = Hlines[j - 1] + (Hlines[j + 1] - Hlines[j - 1]) / 3;
+							Hlines.insert(Hlines.begin() + j + 1, Hlines[j - 1] + 2 * (Hlines[j + 1] - Hlines[j - 1]) / 3);
+						}
+						else {
+							Hlines[j + 1] = Hlines[j] + (Hlines[j + 2] - Hlines[j]) / 3;
+							Hlines.insert(Hlines.begin() + j + 2, Hlines[j] + 2 * (Hlines[j + 2] - Hlines[j]) / 3);
+						}
+					}
+				}
+			}
+
+			flag++;
+			flagend--;
+			return adjustHgrid(Hlines, flag, flagend, errorlimit);
+		}else return true;
+	}else return true;
 }

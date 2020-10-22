@@ -18,5 +18,9 @@ float getThresholdV2(Mat M);
 bool getBinarySignals(projections* signals, projections* binarySignals);
 vector<int> getHlines(Mat H);
 vector<int> getVlines(Mat V);
+bool deleteEmptyLines(Mat image, vector<int>& Hlines, vector<int>& Vlines, bool fourAngles = false, bool first = true);
+bool adjustToDevice(Device d, Mat image, vector<int>& Hlines, vector<int>& Vlines);
+bool adjustGrid(vector<int>& Hlines, vector<int>& Vlines); // shorthand
+bool adjustHgrid(vector<int>& Hlines, int flag=0, int flagend=0, float errorlimit=0.0); // both H and V
 
 #endif
