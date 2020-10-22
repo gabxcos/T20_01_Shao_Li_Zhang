@@ -504,7 +504,7 @@ vector<int> getVlines(Mat V) {
 	return vlspot;
 }
 
-bool deleteEmptyLines(Mat image, vector<int>& Hlines, vector<int>& Vlines, bool fourAngles, bool first) {
+bool deleteEmptyLines(Mat image, vector<int>& Hlines, vector<int>& Vlines, bool first) {
 	bool hasEliminated = false;
 	float thresh = 0.005;
 
@@ -513,15 +513,12 @@ bool deleteEmptyLines(Mat image, vector<int>& Hlines, vector<int>& Vlines, bool 
 
 	float minMean = 1.0;
 	int minIndex = -1;
-	float startMean = 1.0, endMean = 1.0;
 	// Horizontal strips
 	std::printf("\nHorizontal elimination:\n");
 	int startV = Vlines[0], endV = Vlines[numVlines - 1];
 	for (int i = 0; i < (numHlines - 1); i++) {
 		Mat testImg = image(Rect(startV, Hlines[i], endV - startV, Hlines[i+1] - Hlines[i]));
 		float curr_mean = mean(testImg)[0];
-		if (i == 0) startMean = curr_mean;
-		else if (i == (numHlines - 2)) endMean = curr_mean;
 		std::printf("- Mean: %.4f\n", curr_mean);
 		if (curr_mean < minMean) {
 			minMean = curr_mean;
@@ -538,23 +535,15 @@ bool deleteEmptyLines(Mat image, vector<int>& Hlines, vector<int>& Vlines, bool 
 		numHlines--;
 		hasEliminated = true;
 	}
-	else if (fourAngles) {
-		;
-	}
-	
 
 	minMean = 1.0;
 	minIndex = -1;
-	startMean = 1.0;
-	endMean = 1.0;
 	// Vertical strips
 	std::printf("\nVertical elimination:\n");
 	int startH = Hlines[0], endH = Hlines[numHlines - 1];
 	for (int i = 0; i < (numVlines - 1); i++) {
 		Mat testImg = image(Rect(Vlines[i], startH, Vlines[i + 1] - Vlines[i], endH - startH));
 		float curr_mean = mean(testImg)[0];
-		if (i == 0) startMean = curr_mean;
-		else if (i == (numVlines - 2)) endMean = curr_mean;
 		std::printf("- Mean: %.4f\n", curr_mean);
 		if (curr_mean < minMean) {
 			minMean = curr_mean;
@@ -571,13 +560,32 @@ bool deleteEmptyLines(Mat image, vector<int>& Hlines, vector<int>& Vlines, bool 
 		numVlines--;
 		hasEliminated = true;
 	}
-	else if (fourAngles) {
-		;
-	}
 	
 
 	if (!first || !hasEliminated) return true;
-	else return deleteEmptyLines(image, Hlines, Vlines, fourAngles, false);
+	else return deleteEmptyLines(image, Hlines, Vlines, false);
+}
+
+bool setToAngles(Mat image, vector<int>& Hlines, vector<int>& Vlines) {
+	bool resize = false;
+
+	int startX = 0, startY = 0, endX = Vlines.size() - 1, endY = Hlines.size();
+	int bestMean = calculateAngleProb(startX, startY, endX, endY, image, Hlines, Vlines);
+	do{
+		int c;
+	} while (resize);
+
+	return true;
+}
+
+float calculateAngleProb(int startX, int startY, int endX, int endY, Mat image, vector<int>& Hlines, vector<int>& Vlines) {
+	float totMean = 0.0;
+	totMean += mean(image(Rect(Vlines[startX], Hlines[startY], Vlines[startX + 1] - Vlines[startX], Hlines[startY + 1] - Hlines[startY])))[0];
+	totMean += mean(image(Rect(Vlines[endX], Hlines[startY], Vlines[endX + 1] - Vlines[endX], Hlines[startY + 1] - Hlines[startY])))[0];
+	totMean += mean(image(Rect(Vlines[startX], Hlines[endY], Vlines[startX + 1] - Vlines[startX], Hlines[endY + 1] - Hlines[endY])))[0];
+	totMean += mean(image(Rect(Vlines[endX], Hlines[endY], Vlines[endX + 1] - Vlines[endX], Hlines[endY + 1] - Hlines[endY])))[0];
+	totMean /= 4.0;
+	return totMean;
 }
 
 bool adjustToDevice(Device d, Mat image, vector<int>& Hlines, vector<int>& Vlines) {
