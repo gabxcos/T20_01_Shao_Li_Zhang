@@ -59,9 +59,9 @@ bool OpenCVSegmenter::gridding() {
 	
 	if (getBinarySignals(&signals, &binarySignals)) {
 		Mat visualizeV(100, binarySignals.V.cols, CV_32FC1);
-		repeat(signals.V, 100, 1, visualizeV);
+		repeat(binarySignals.V, 100, 1, visualizeV);
 		Mat visualizeH(binarySignals.H.rows, 100, CV_32FC1);
-		repeat(signals.H, 1, 300, visualizeH);
+		repeat(binarySignals.H, 1, 300, visualizeH);
 		imshow("Image", getImage());
 		imshow("V", visualizeV);
 		imshow("H", visualizeH);
@@ -70,8 +70,6 @@ bool OpenCVSegmenter::gridding() {
 
 	Hlines = getHlines(binarySignals.H);
 	Vlines = getVlines(binarySignals.V);
-
-	adjustToDevice(getDevice(), getImage(), Hlines, Vlines);
 
 	Mat rgbImage;
 	cvtColor(getImage(), rgbImage, COLOR_GRAY2BGR);
@@ -84,7 +82,9 @@ bool OpenCVSegmenter::gridding() {
 	imshow("Image", rgbImage);
 	waitKey(0);
 
-	adjustGrid(Hlines, Vlines); // ------------------------------------
+	// ---------------------------
+	adjustToDevice(getDevice(), getImage(), Hlines, Vlines, binarySignals);
+	// ---------------------------
 
 	cvtColor(getImage(), rgbImage, COLOR_GRAY2BGR);
 
@@ -93,6 +93,8 @@ bool OpenCVSegmenter::gridding() {
 
 	imshow("Image", rgbImage);
 	waitKey(0);
+
+	setGrid(Hlines, Vlines);
 
 	return true;
 }
@@ -566,29 +568,179 @@ bool deleteEmptyLines(Mat image, vector<int>& Hlines, vector<int>& Vlines, bool 
 	else return deleteEmptyLines(image, Hlines, Vlines, false);
 }
 
-bool setToAngles(Mat image, vector<int>& Hlines, vector<int>& Vlines) {
-	bool resize = false;
+bool setToAngles(Mat image, vector<int>& Hlines, vector<int>& Vlines, projections binarySignals) {
 
-	int startX = 0, startY = 0, endX = Vlines.size() - 1, endY = Hlines.size();
-	int bestMean = calculateAngleProb(startX, startY, endX, endY, image, Hlines, Vlines);
+	bool resize;
+
+	float bias = 1;
+
+	int startX = 0, startY = 0, endX = Vlines.size() - 1, endY = Hlines.size() - 1;
+	float bestMean = calculateAngleProb(startX, startY, endX, endY, image, Hlines, Vlines);
 	do{
-		int c;
-	} while (resize);
+		resize = false;
+		float currMean;
+		// L-R
+		currMean = calculateAngleProb(startX + 1, startY, endX, endY, image, Hlines, Vlines);
+		if (bias * currMean > bestMean) {
+			bestMean = currMean;
+			startX++;
+			resize = true;
+			continue;
+		}
+		currMean = calculateAngleProb(startX, startY, endX - 1, endY, image, Hlines, Vlines);
+		if (bias * currMean > bestMean) {
+			bestMean = currMean;
+			endX--;
+			resize = true;
+			continue;
+		}
+		// T-B
+		currMean = calculateAngleProb(startX, startY + 1, endX, endY, image, Hlines, Vlines);
+		if (bias * currMean > bestMean) {
+			bestMean = currMean;
+			startY++;
+			resize = true;
+			continue;
+		}
+		currMean = calculateAngleProb(startX, startY, endX, endY - 1, image, Hlines, Vlines);
+		if (bias * currMean > bestMean) {
+			bestMean = currMean;
+			endY--;
+			resize = true;
+			continue;
+		}
+		// TL-BR
+		currMean = calculateAngleProb(startX + 1, startY + 1, endX, endY, image, Hlines, Vlines);
+		if (bias * currMean > bestMean) {
+			bestMean = currMean;
+			startX++;
+			startY++;
+			resize = true;
+			continue;
+		}
+		currMean = calculateAngleProb(startX, startY, endX - 1, endY - 1, image, Hlines, Vlines);
+		if (bias * currMean > bestMean) {
+			bestMean = currMean;
+			endX--;
+			endY--;
+			resize = true;
+			continue;
+		}
+		// TR-BL
+		currMean = calculateAngleProb(startX, startY + 1, endX - 1, endY, image, Hlines, Vlines);
+		if (bias * currMean > bestMean) {
+			bestMean = currMean;
+			startY++;
+			endX--;
+			resize = true;
+			continue;
+		}
+		currMean = calculateAngleProb(startX + 1, startY, endX, endY - 1, image, Hlines, Vlines);
+		if (bias * currMean > bestMean) {
+			bestMean = currMean;
+			startX++;
+			endY--;
+			resize = true;
+			continue;
+		}
+		// All angles
+		currMean = calculateAngleProb(startX + 1, startY + 1, endX - 1, endY - 1, image, Hlines, Vlines);
+		if (bias * currMean > bestMean) {
+			bestMean = currMean;
+			startX++;
+			startY++;
+			endX--;
+			endY--;
+			resize = true;
+			continue;
+		}
+	} while (resize && startX < (endX+1) && startY < (endY+1));
+
+	// H adjust
+	if (endX < (Vlines.size() - 1)) for (int i = (Vlines.size() - 1); i > endX; i--) Vlines.erase(Vlines.begin() + i);
+	
+	if (startX > 0) for (int i = (startX - 1); i > 0; i--) Vlines.erase(Vlines.begin() + i);
+	
+
+	// V adjust
+	if (endY < (Hlines.size() - 1)) for (int i = (Hlines.size() - 1); i > endY; i--) Hlines.erase(Hlines.begin() + i);
+	
+	if (startY > 0) for (int i = (startY - 1); i > 0; i--) Hlines.erase(Hlines.begin() + i);
+	
+
+	reBinaryGrid(Hlines, Vlines, binarySignals);
 
 	return true;
 }
 
-float calculateAngleProb(int startX, int startY, int endX, int endY, Mat image, vector<int>& Hlines, vector<int>& Vlines) {
-	float totMean = 0.0;
-	totMean += mean(image(Rect(Vlines[startX], Hlines[startY], Vlines[startX + 1] - Vlines[startX], Hlines[startY + 1] - Hlines[startY])))[0];
-	totMean += mean(image(Rect(Vlines[endX], Hlines[startY], Vlines[endX + 1] - Vlines[endX], Hlines[startY + 1] - Hlines[startY])))[0];
-	totMean += mean(image(Rect(Vlines[startX], Hlines[endY], Vlines[startX + 1] - Vlines[startX], Hlines[endY + 1] - Hlines[endY])))[0];
-	totMean += mean(image(Rect(Vlines[endX], Hlines[endY], Vlines[endX + 1] - Vlines[endX], Hlines[endY + 1] - Hlines[endY])))[0];
-	totMean /= 4.0;
-	return totMean;
+bool reBinaryGrid(vector<int> &Hlines, vector<int> &Vlines, projections binarySignals) {
+	int displ = 20;
+	// move left to right
+	bool isOff = true;
+	int cursor = Vlines[0];
+	do {
+		cursor++;
+		isOff = binarySignals.V.at<float>(0, cursor) < 100;
+	} while (isOff);
+	Vlines[0] = max(4, cursor - displ);
+	// move right to left
+	isOff = true;
+	cursor = Vlines[Vlines.size() - 1];
+	do {
+		cursor--;
+		isOff = binarySignals.V.at<float>(0, cursor) < 100;
+	} while (isOff);
+	Vlines[Vlines.size() - 1] = min(binarySignals.V.cols - 5, cursor + displ);
+	return true;
+
+	// move up to down
+	isOff = true;
+	cursor = Hlines[0];
+	do {
+		cursor++;
+		isOff = binarySignals.H.at<float>(cursor, 0) < 100;
+	} while (isOff);
+	Hlines[0] = max(4, cursor - displ);
+	// move down to up
+	isOff = true;
+	cursor = Hlines[Hlines.size() - 1];
+	do {
+		cursor--;
+		isOff = binarySignals.H.at<float>(cursor, 0) < 100;
+	} while (isOff);
+	Hlines[Hlines.size() - 1] = min(binarySignals.H.rows - 5, cursor + displ);
+	return true;
 }
 
-bool adjustToDevice(Device d, Mat image, vector<int>& Hlines, vector<int>& Vlines) {
+double pdf(double mean, double var, double x) { // Gaussian PDF
+	double result = 1.0;
+	result /= var;
+	result /= sqrt(2 * M_PI);
+	// result *= exp(-0.5 * pow((x - mean) / var, 2));
+	double Z = x - mean;
+	Z /= var;
+	Z = pow(Z, 2);
+	result *= exp(-0.5 * Z);
+	return result;
+}
+
+float calculateAngleProb(int startX, int startY, int endX, int endY, Mat image, vector<int> Hlines, vector<int> Vlines) {
+	double totMean = 0.0;
+	double currMean;
+	double e = 0.4, v = 0.1; // expected, variance
+	currMean = mean(image(Rect(Vlines[startX], Hlines[startY], Vlines[startX + 1] - Vlines[startX], Hlines[startY + 1] - Hlines[startY])))[0];
+	totMean += pdf(e, v, currMean);
+	currMean = mean(image(Rect(Vlines[endX - 1], Hlines[startY], Vlines[endX] - Vlines[endX - 1], Hlines[startY + 1] - Hlines[startY])))[0];
+	totMean += pdf(e, v, currMean);
+	currMean = mean(image(Rect(Vlines[startX], Hlines[endY - 1], Vlines[startX + 1] - Vlines[startX], Hlines[endY] - Hlines[endY - 1])))[0];
+	totMean += pdf(e, v, currMean);
+	currMean = mean(image(Rect(Vlines[endX - 1], Hlines[endY - 1], Vlines[endX] - Vlines[endX - 1], Hlines[endY] - Hlines[endY - 1])))[0];
+	totMean += pdf(e, v, currMean);
+	totMean /= 4.0;
+	return (float)totMean;
+}
+
+bool adjustToDevice(Device d, Mat image, vector<int>& Hlines, vector<int>& Vlines, projections binarySignals) {
 
 	int numRows = d.numRows();
 	int numCols = d.numCols();
@@ -600,21 +752,26 @@ bool adjustToDevice(Device d, Mat image, vector<int>& Hlines, vector<int>& Vline
 	vector<vector<bool>> angles;
 	if (hasAngles) angles = d.getAngles();
 	bool hasFourAngles = angles[0][0] && angles[0][1] && angles[1][0] && angles[1][1];
-	deleteEmptyLines(image, Hlines, Vlines, hasFourAngles);
-
-	return true;
-}
-
-bool adjustGrid(vector<int> &Hlines, vector<int> &Vlines) { 
+	if (hasFourAngles) setToAngles(image, Hlines, Vlines, binarySignals);
+	deleteEmptyLines(image, Hlines, Vlines);
+	adjustGrid(Hlines, Vlines);
+	adaptToDeviceSize(numRows, numCols, Hlines, Vlines);
 	
-	adjustHgrid(Hlines);
-	// -------------------------------------------------------------------
-	adjustHgrid(Vlines);
+	adjustGrid(Hlines, Vlines, false);
 
 	return true;
 }
 
-bool adjustHgrid(vector<int>& Hlines, int flag, int flagend, float errorlimit) {
+bool adjustGrid(vector<int> &Hlines, vector<int> &Vlines, bool resizable) { 
+	
+	adjustHgrid(Hlines, resizable);
+	// -------------------------------------------------------------------
+	adjustHgrid(Vlines, resizable);
+
+	return true;
+}
+
+bool adjustHgrid(vector<int>& Hlines, bool resizable, int flag, int flagend, float errorlimit) {
 	// Valid for both H and V
 	vector<int> Hdist, Herr, HerrLines;
 	float HmeanDist = 0.0, HerrMax = 0.0, HmeanErr = 0.0, HMSE = 0.0;
@@ -659,11 +816,11 @@ bool adjustHgrid(vector<int>& Hlines, int flag, int flagend, float errorlimit) {
 			if (HmaxErrIndex == 0) { // first line
 				int j = HmaxErrIndex;
 				if (Hdist[j] < HmeanDist) {
-					if (Herr[j + 1] < (HMSE + HmeanDist / 10)) {
+					if (resizable && Herr[j + 1] < (HMSE + HmeanDist / 10)) {
 						// redundant grid line 1
 						Hlines[j] = (Hlines[j] + Hlines[j + 1]) / 2;
 						Hlines.erase(Hlines.begin() + j + 1);
-					}else if (Herr[j + 1] > (HMSE + HmeanDist / 10)) {
+					}else if (resizable && Herr[j + 1] > (HMSE + HmeanDist / 10)) {
 						// redundant grid line 2
 						Hlines[j + 1] = (Hlines[j + 1] + Hlines[j + 2]) / 2;
 						Hlines.erase(Hlines.begin() + j + 2);
@@ -674,11 +831,11 @@ bool adjustHgrid(vector<int>& Hlines, int flag, int flagend, float errorlimit) {
 					}
 				}
 				else if (Hdist[j] > HmeanDist) {
-					if (Herr[j + 1] < (HMSE + HmeanDist / 10)) {
+					if (resizable && Herr[j + 1] < (HMSE + HmeanDist / 10)) {
 						// missing grid line 1
 						Hlines.insert(Hlines.begin() + j + 1, (Hlines[j] + Hlines[j + 1]) / 2);
 					}
-					else if (Herr[j + 1] > (HMSE + HmeanDist / 10)) {
+					else if (resizable && Herr[j + 1] > (HMSE + HmeanDist / 10)) {
 						// missing grid line 2
 						Hlines[j + 1] = Hlines[j] + (Hlines[j + 2] - Hlines[j]) / 3;
 						Hlines.insert(Hlines.begin() + j + 2, Hlines[j] + 2 * (Hlines[j + 2] - Hlines[j]) / 3);
@@ -692,12 +849,12 @@ bool adjustHgrid(vector<int>& Hlines, int flag, int flagend, float errorlimit) {
 			else if (HmaxErrIndex == (numHlines - 2)) { // last line
 				int j = HmaxErrIndex;
 				if (Hdist[j] < HmeanDist) {
-					if (Herr[j - 1] < (HMSE + HmeanDist / 10)) {
+					if (resizable && Herr[j - 1] < (HMSE + HmeanDist / 10)) {
 						// redundant grid line 1
 						Hlines[j] = (Hlines[j] + Hlines[j + 1]) / 2;
 						Hlines.erase(Hlines.begin() + j + 1);
 					}
-					else if (Herr[j - 1] > (HMSE + HmeanDist / 10)) {
+					else if (resizable && Herr[j - 1] > (HMSE + HmeanDist / 10)) {
 						// redundant grid line 2
 						Hlines[j - 1] = (Hlines[j - 1] + Hlines[j]) / 2;
 						Hlines.erase(Hlines.begin() + j);
@@ -708,11 +865,11 @@ bool adjustHgrid(vector<int>& Hlines, int flag, int flagend, float errorlimit) {
 					}
 				}
 				else if (Hdist[j] > HmeanDist) {
-					if (Herr[j - 1] < (HMSE + HmeanDist / 10)) {
+					if (resizable && Herr[j - 1] < (HMSE + HmeanDist / 10)) {
 						// missing grid line 1
 						Hlines.insert(Hlines.begin() + j + 1, (Hlines[j] + Hlines[j + 1]) / 2);
 					}
-					else if (Herr[j - 1] > (HMSE + HmeanDist / 10)) {
+					else if (resizable && Herr[j - 1] > (HMSE + HmeanDist / 10)) {
 						// missing grid line 2
 						Hlines[j] = Hlines[j - 1] + (Hlines[j + 1] - Hlines[j - 1]) / 3;
 						Hlines.insert(Hlines.begin() + j + 1, Hlines[j - 1] + 2 * (Hlines[j + 1] - Hlines[j - 1]) / 3);
@@ -727,23 +884,23 @@ bool adjustHgrid(vector<int>& Hlines, int flag, int flagend, float errorlimit) {
 				int j = HmaxErrIndex;
 				float thresh = (HMSE + HmeanDist / 10);
 				if (Hdist[j] < HmeanDist) {
-					if ((Herr[j - 1] < thresh && Herr[j - 1] < thresh) || Hdist[j + 1] < HmeanDist) {
+					if (resizable && ((Herr[j - 1] < thresh && Herr[j - 1] < thresh) || Hdist[j + 1] < HmeanDist)) {
 						// redundant grid line 1
 						Hlines[j] = (Hlines[j] + Hlines[j + 1]) / 2;
 						Hlines.erase(Hlines.begin() + j + 1);
 					}
-					else if (Herr[j - 1] > thresh || Herr[j + 1] > thresh) {
+					else if (resizable && (Herr[j - 1] > thresh || Herr[j + 1] > thresh)) {
 						// redundant grid line 2
 						Hlines[j + 1] = (Hlines[j + 1] + Hlines[j + 2]) / 2;
 						Hlines.erase(Hlines.begin() + j + 2);
 					}
 				}
 				else if (Hdist[j] > HmeanDist) {
-					if (Herr[j - 1] < thresh && Herr[j + 1] < thresh) {
+					if (resizable && (Herr[j - 1] < thresh && Herr[j + 1] < thresh)) {
 						// missing grid line 1
 						Hlines.insert(Hlines.begin() + j + 1, (Hlines[j] + Hlines[j + 1]) / 2);
 					}
-					else if (Herr[j - 1] > thresh || Herr[j + 1] > thresh) {
+					else if (resizable && (Herr[j - 1] > thresh || Herr[j + 1] > thresh)) {
 						// missing grid line 2
 						if (Hdist[j - 1] > HmeanDist) {
 							Hlines[j] = Hlines[j - 1] + (Hlines[j + 1] - Hlines[j - 1]) / 3;
@@ -759,7 +916,68 @@ bool adjustHgrid(vector<int>& Hlines, int flag, int flagend, float errorlimit) {
 
 			flag++;
 			flagend--;
-			return adjustHgrid(Hlines, flag, flagend, errorlimit);
+			return adjustHgrid(Hlines, resizable, flag, flagend, errorlimit);
 		}else return true;
 	}else return true;
+}
+
+bool adaptToDeviceSize(int numRows, int numCols, vector<int>& Hlines, vector<int>& Vlines) {
+	int numHlines = Hlines.size(), numVlines = Vlines.size();
+
+	if (numRows == (numHlines - 1) && numCols == (numVlines - 1)) return true;
+	else {
+		int minDist, maxDist;
+		int index;
+		int currDist;
+		if (numRows < (numHlines - 1)) { // elimina righe
+			minDist = -1;
+			index = -1;
+			for (int i = 0; i < (numHlines - 1); i++) {
+				currDist = Hlines[i + 1] - Hlines[i];
+				if (currDist < minDist || minDist == -1) {
+					minDist = currDist;
+					index = i + 1;
+				}
+			}
+			Hlines.erase(Hlines.begin() + index);
+		}
+		else if (numRows > (numHlines - 1)) { // aggiungi righe
+			maxDist = -1;
+			index = -1;
+			for (int i = 0; i < (numHlines - 1); i++) {
+				currDist = Hlines[i + 1] - Hlines[i];
+				if (currDist > maxDist || maxDist == -1) {
+					maxDist = currDist;
+					index = i + 1;
+				}
+			}
+			Hlines.insert(Hlines.begin() + index, Hlines[index] - maxDist / 2);
+		}
+
+		if (numCols < (numVlines - 1)) { // elimina colonne
+			minDist = -1;
+			index = -1;
+			for (int i = 0; i < (numVlines - 1); i++) {
+				currDist = Vlines[i + 1] - Vlines[i];
+				if (currDist < minDist || minDist == -1) {
+					minDist = currDist;
+					index = i + 1;
+				}
+			}
+			Vlines.erase(Vlines.begin() + index);
+		}
+		else if (numCols > (numVlines - 1)) { // aggiungi colonne
+			maxDist = -1;
+			index = -1;
+			for (int i = 0; i < (numVlines - 1); i++) {
+				currDist = Vlines[i + 1] - Vlines[i];
+				if (currDist > maxDist || maxDist == -1) {
+					maxDist = currDist;
+					index = i + 1;
+				}
+			}
+			Vlines.insert(Vlines.begin() + index, Vlines[index] - maxDist / 2);
+		}
+	}
+	return adaptToDeviceSize(numRows, numCols, Hlines, Vlines);
 }

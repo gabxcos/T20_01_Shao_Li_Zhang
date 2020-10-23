@@ -25,7 +25,9 @@ private:
 	bool visualized; // does the user want to visualize the middle results in a window? for testing purposes
 
 	// Internal status, OpenCV image and its parameters
-	Mat originalImage, image;
+	Mat originalImage, resizedImage, image;
+	int resX, resY, resXdist, resYdist;
+	vector<int> gridH, gridV;
 	int channels;
 	int width;
 	int height;
@@ -38,6 +40,7 @@ public:
 	//Steps
 	bool preprocess();
 	bool gridding();
+	bool segmenting();
 
 	// Getters/Setters
 	std::string getPath() { return file_path; };
@@ -54,6 +57,15 @@ public:
 
 	Mat getImage() { return image; }
 	void setImage(Mat _image) { image = _image; }
+
+	Mat getResImage() { return resizedImage; }
+	void setResImage(Mat _image) { resizedImage = _image; }
+
+	void setResRect(int _resX, int _resY, int _resXdist, int _resYdist) { resX = _resX; resY = _resY; resXdist = _resXdist; resYdist = _resYdist; }
+
+	void setGrid(vector<int>& Hlines, vector<int>& Vlines) { gridH = Hlines; gridV = Vlines; }
+	vector<int> getGridH() { return gridH; }
+	vector<int> getGridV() { return gridV; }
 
 	int getWidth() { return width; }
 	void setWidth(int _width) { width = _width; }

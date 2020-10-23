@@ -42,32 +42,44 @@ float calculateK(Mat image) {
 
 	float temp_k = 0.0;
 
-	int randValX = 500, randValY = -500;
+	float numIter = 40.0;
+	float lowBound = 0.6, upBound = 0.9;
 
-	for (int i = 0; i < 10; i++) {
+	int sqSize = 15;
+	int randVal = 500;
+
+	for (int i = 0; i < numIter; i++) {
 		std::printf("- Iteration %d:\n", i + 1);
-		float minMax = 0.9;
+		float minMax = upBound;
 		for(int j = 0; j < 12; j++){
 			double max;
 			Mat stripped;
-			/*if (j < 6) {
-				randVal = rand() % (width - 100);
+			// randomize srand for each side, take into consideration 10 px border and 10 px displacement
+			if (j < 6) {
 				if (j < 3) {
-					stripped = image(Rect(randVal, 0, 100, 100)); // upper
+					srand(time(NULL) + randVal);
+					randVal = rand() % (width - sqSize - 40);
+					stripped = image(Rect(randVal + 20, 20, sqSize, sqSize)); // upper
 				}
 				else {
-					stripped = image(Rect(randVal, height - 101, 100, 100)); // lower
+					srand(time(NULL) - randVal);
+					randVal = rand() % (width - sqSize - 40);
+					stripped = image(Rect(randVal + 20, height - sqSize - 21, sqSize, sqSize)); // lower
 				}
 			}
 			else {
-				randVal = rand() % (height - 100);
 				if (j < 9) {
-					stripped = image(Rect(0, randVal, 100, 100)); // left
+					srand(time(NULL) + randVal/2);
+					randVal = rand() % (height - sqSize - 40);
+					stripped = image(Rect(20, randVal + 20, sqSize, sqSize)); // left
 				}
 				else {
-					stripped = image(Rect(width - 101, randVal, 100, 100)); // right
+					srand(time(NULL) - randVal / 2);
+					randVal = rand() % (height - sqSize - 40);
+					stripped = image(Rect(width - sqSize - 21, randVal + 20, sqSize, sqSize)); // right
 				}
-			}*/
+			}
+			/*
 			srand(time(NULL) + randValX);
 			randValX = rand() % (width - 150);
 
@@ -75,15 +87,15 @@ float calculateK(Mat image) {
 			randValY = rand() % (height - 150);
 
 			stripped = image(Rect(randValX, randValY, 150, 150));
-
+			*/
 			minMaxLoc(stripped, NULL, &max);
 			std::printf("Max found: %.4f\n", max);
-			if (max < minMax && max > 0) minMax = (float)max;
+			if (max < minMax && max > lowBound && max < upBound) minMax = (float)max;
 		}
 		std::printf("Minmax chosen: %.4f\n\n", minMax);
 		temp_k += minMax;
 	}
-	float k = temp_k / 10.0;
+	float k = temp_k / numIter;
 
 	std::printf("k trovato: %.4f\n\n", k);
 

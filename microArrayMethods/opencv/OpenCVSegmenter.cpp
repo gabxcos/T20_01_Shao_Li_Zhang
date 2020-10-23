@@ -79,6 +79,9 @@ bool OpenCVSegmenter::resizeImage()
 
 	Mat croppedImage = image(myROI);
 	setImage(croppedImage);
+	setResImage(croppedImage);
+
+	setResRect(startX, startY, (endX - startX), (endY - startY));
 
 	setChannels(croppedImage.channels());
 	setWidth(croppedImage.cols);

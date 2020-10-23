@@ -31,6 +31,7 @@ int main() {
 	service.init();
 	service.preprocess();
 	service.gridding();
+	service.segmenting();
 
 	return 0;
 }
