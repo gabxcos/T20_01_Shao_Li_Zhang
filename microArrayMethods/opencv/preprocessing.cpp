@@ -4,10 +4,12 @@
 
 bool OpenCVSegmenter::preprocess() {
 	Mat img = getImage();
-	Mat ctrEnhImg = contrastEnhance(img);
+	float k = calculateK(img);
+	Mat ctrEnhImg = contrastEnhance(img, k);
 	ctrEnhImg = medianFilter(ctrEnhImg);
 
 	setImage(ctrEnhImg);
+	setBgThresh(k);
 	resizeImage();
 
 	return true;
@@ -103,9 +105,8 @@ float calculateK(Mat image) {
 }
 
 
-Mat contrastEnhance(Mat image) {
+Mat contrastEnhance(Mat image, float k) {
 	float ctr = calculateContrast(image);
-	float k = calculateK(image);
 	Mat contrastedImg = image;
 	for (int i = 0; i < image.rows; i++) {
 		for (int j = 0; j < image.cols; j++) {

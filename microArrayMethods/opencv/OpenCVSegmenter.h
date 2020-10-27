@@ -26,6 +26,7 @@ private:
 
 	// Internal status, OpenCV image and its parameters
 	Mat originalImage, resizedImage, image;
+	float bgThresh;
 	int resX, resY, resXdist, resYdist;
 	vector<int> gridH, gridV;
 	int channels;
@@ -57,6 +58,9 @@ public:
 
 	Mat getImage() { return image; }
 	void setImage(Mat _image) { image = _image; }
+
+	float getBgThresh() { return bgThresh; }
+	void setBgThresh(float k) { bgThresh = k; }
 
 	Mat getResImage() { return resizedImage; }
 	void setResImage(Mat _image) { resizedImage = _image; }

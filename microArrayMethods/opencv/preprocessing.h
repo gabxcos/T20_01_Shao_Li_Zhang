@@ -6,7 +6,7 @@
 
 float calculateContrast(Mat image);
 float calculateK(Mat image);
-Mat contrastEnhance(Mat image);
+Mat contrastEnhance(Mat image, float k);
 Mat medianFilter(Mat image);
 
 #endif
