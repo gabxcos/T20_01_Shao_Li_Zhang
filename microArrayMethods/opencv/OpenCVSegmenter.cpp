@@ -25,13 +25,18 @@ bool OpenCVSegmenter::init() {
 
 	setOriginalImage(img);
 	setImage(img);
-	resizeImage();
+	resizeImage(true);
+
+	setWidth(img.cols);
+	setHeight(img.rows);
+	setChannels(img.channels());
+	setContinuous(img.isContinuous());
 
 	std::cout << "OpenCV segmentation service correctly initialized." << std::endl;
 	return true;
 }
 
-bool OpenCVSegmenter::resizeImage()
+Mat OpenCVSegmenter::resizeImage(bool init)
 {
 	Mat image = getImage();
 	int width = image.cols, height = image.rows;
@@ -78,16 +83,11 @@ bool OpenCVSegmenter::resizeImage()
 	Rect myROI(startX, startY, (endX-startX), (endY-startY));
 
 	Mat croppedImage = image(myROI);
-	setImage(croppedImage);
-	setResImage(croppedImage);
+	
+	if (init) {
+		setResImage(croppedImage);
+		setResRect(startX, startY, (endX - startX), (endY - startY));
+	}
 
-	setResRect(startX, startY, (endX - startX), (endY - startY));
-
-	setChannels(croppedImage.channels());
-	setWidth(croppedImage.cols);
-	setHeight(croppedImage.rows);
-
-	setContinuous(croppedImage.isContinuous());
-
-	return true;
+	return croppedImage;
 }

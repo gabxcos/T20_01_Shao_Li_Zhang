@@ -36,7 +36,7 @@ private:
 public:
 	OpenCVSegmenter(std::string path, Device _dev, bool isVisualized=false);
 	bool init();
-	bool resizeImage();
+	Mat resizeImage(bool init);
 
 	//Steps
 	bool preprocess();

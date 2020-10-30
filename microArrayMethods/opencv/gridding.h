@@ -30,6 +30,7 @@ bool reBinaryGrid(vector<int>& Hlines, vector<int>& Vlines, projections binarySi
 double pdf(double mean, double var, double x);
 float calculateAngleProb(int startX, int startY, int endX, int endY, Mat image, vector<int> Hlines, vector<int> Vlines);
 bool adjustToDevice(Device d, Mat image, vector<int>& Hlines, vector<int>& Vlines, projections binarySignals);
+bool alignToDevice(int numRows, int numCols, vector<int>& Hlines, vector<int>& Vlines, bool fineAdjust);
 bool adjustGrid(vector<int>& Hlines, vector<int>& Vlines, bool resizable = true); // shorthand
 bool adjustHgrid(vector<int>& Hlines, bool resizable, int flag=0, int flagend=0, float errorlimit=0.0); // both H and V
 bool adaptToDeviceSize(int numRows, int numCols, vector<int>& Hlines, vector<int>& Vlines);

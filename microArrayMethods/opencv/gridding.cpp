@@ -2,9 +2,9 @@
 
 bool OpenCVSegmenter::gridding() {
 	projections proj, reconstructions, signals, binarySignals;
-	Mat img = getImage();
-	int width = getWidth();
-	int height = getHeight();
+	Mat img = getImage().clone();
+	int width = img.cols;
+	int height = img.rows;
 	bool continuous = isContinuous();
 	vector<int> Hlines, Vlines;
 
@@ -421,7 +421,9 @@ bool getBinarySignals(projections* signals, projections* binarySignals) {
 	int height = (signals->H).rows;
 	Mat binH(height, 1, CV_32FC1, float(0));
 	for (int i = 0; i < height; i++) {
-		if (signals->H.at<float>(i, 0) > threshH) binH.at<float>(i, 0) = float(255);
+		if (signals->H.at<float>(i, 0) > threshH) {
+			if ((i == 0 || i == (height - 1)) || (i > 0 && signals->H.at<float>(i - 1, 0) > threshH) || (i < (height - 1) && signals->H.at<float>(i + 1, 0) > threshH)) binH.at<float>(i, 0) = float(255);
+		}
 	}
 	binarySignals->H = binH;
 
@@ -429,7 +431,9 @@ bool getBinarySignals(projections* signals, projections* binarySignals) {
 	int width = (signals->V).cols;
 	Mat binV(1, width, CV_32FC1, float(0));
 	for (int i = 0; i < width; i++) {
-		if (signals->V.at<float>(0, i) > threshV) binV.at<float>(0, i) = float(255);
+		if (signals->V.at<float>(0, i) > threshV) {
+			if((i == 0 || i == (width - 1)) || (i>0 && signals->V.at<float>(0, i-1) > threshV) || (i < (width - 1) && signals->V.at<float>(0, i + 1) > threshV)) binV.at<float>(0, i) = float(255);
+		}
 	}
 	binarySignals->V = binV;
 
@@ -754,10 +758,48 @@ bool adjustToDevice(Device d, Mat image, vector<int>& Hlines, vector<int>& Vline
 	bool hasFourAngles = angles[0][0] && angles[0][1] && angles[1][0] && angles[1][1];
 	if (hasFourAngles) setToAngles(image, Hlines, Vlines, binarySignals);
 	deleteEmptyLines(image, Hlines, Vlines);
-	adjustGrid(Hlines, Vlines);
-	adaptToDeviceSize(numRows, numCols, Hlines, Vlines);
 	
-	adjustGrid(Hlines, Vlines, false);
+	for(int i = 0; i < 5; i ++) adjustGrid(Hlines, Vlines, true);
+	// old: adaptToDeviceSize(numRows, numCols, Hlines, Vlines);
+	alignToDevice(numRows, numCols, Hlines, Vlines, true);
+
+	return true;
+}
+
+bool alignToDevice(int numRows, int numCols, vector<int>& Hlines, vector<int>& Vlines, bool fineAdjust) {
+	if ((Hlines.size() - 1) != numRows) {
+		int startH = Hlines[0], endH = Hlines[Hlines.size() - 1];
+		int distH = endH - startH;
+		int mean = distH / numRows;
+		int displ = distH - mean * numRows;
+		vector<int> newH;
+		int iterH = startH;
+		newH.push_back(iterH);
+		for (int i = 1; i < numRows; i++) {
+			iterH += mean;
+			if (i == 1) iterH += displ/2;
+			newH.push_back(iterH);
+		}
+		newH.push_back(endH);
+		Hlines = newH;
+	}
+
+	if ((Vlines.size() - 1) != numCols) {
+		int startV = Vlines[0], endV = Vlines[Vlines.size() - 1];
+		int distV = endV - startV;
+		int mean = distV / numCols;
+		int displ = distV - mean * numCols;
+		vector<int> newV;
+		int iterV = startV;
+		newV.push_back(iterV);
+		for (int i = 1; i < numCols; i++) {
+			iterV += mean;
+			if (i == 1) iterV += displ / 2;
+			newV.push_back(iterV);
+		}
+		newV.push_back(endV);
+		Vlines = newV;
+	}
 
 	return true;
 }
@@ -896,19 +938,20 @@ bool adjustHgrid(vector<int>& Hlines, bool resizable, int flag, int flagend, flo
 					}
 				}
 				else if (Hdist[j] > HmeanDist) {
-					if (resizable && (Herr[j - 1] < thresh && Herr[j + 1] < thresh)) {
+					if ((Herr[j - 1] < thresh && Herr[j + 1] < thresh)) {
 						// missing grid line 1
-						Hlines.insert(Hlines.begin() + j + 1, (Hlines[j] + Hlines[j + 1]) / 2);
+						if (resizable) Hlines.insert(Hlines.begin() + j + 1, (Hlines[j] + Hlines[j + 1]) / 2);
+						else Hlines[j + 1] = (Hlines[j] + 2 * Hlines[j + 1]) / 3; // not addable
 					}
-					else if (resizable && (Herr[j - 1] > thresh || Herr[j + 1] > thresh)) {
+					else if ((Herr[j - 1] > thresh || Herr[j + 1] > thresh)) {
 						// missing grid line 2
 						if (Hdist[j - 1] > HmeanDist) {
 							Hlines[j] = Hlines[j - 1] + (Hlines[j + 1] - Hlines[j - 1]) / 3;
-							Hlines.insert(Hlines.begin() + j + 1, Hlines[j - 1] + 2 * (Hlines[j + 1] - Hlines[j - 1]) / 3);
+							if (resizable) Hlines.insert(Hlines.begin() + j + 1, Hlines[j - 1] + 2 * (Hlines[j + 1] - Hlines[j - 1]) / 3);
 						}
 						else {
 							Hlines[j + 1] = Hlines[j] + (Hlines[j + 2] - Hlines[j]) / 3;
-							Hlines.insert(Hlines.begin() + j + 2, Hlines[j] + 2 * (Hlines[j + 2] - Hlines[j]) / 3);
+							if (resizable) Hlines.insert(Hlines.begin() + j + 2, Hlines[j] + 2 * (Hlines[j + 2] - Hlines[j]) / 3);
 						}
 					}
 				}

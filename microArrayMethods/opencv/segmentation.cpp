@@ -2,25 +2,41 @@
 
 bool OpenCVSegmenter::segmenting() {
 	vector<int> gridH = getGridH(), gridV = getGridV();
-	Mat image = getResImage();
+	int s = getAvgDiameter(gridH, gridV);
+	Mat image = getResImage().clone();
+	Mat ctrImg = getImage();
 
-	int x = gridV[20], y = gridH[4];
-	int xd = gridV[21] - x, yd = gridH[5] - y;
+	int x, xd, y, yd;
+	float c1, c2;
+	Mat PCAset;
 
-	Mat spot = image(Rect(x, y, xd, yd));
-	spot = resizeSpot(spot);
+	for (int i = 0; i < gridV.size() - 1; i++) {
+		for (int j = 0; j < gridH.size() - 1; j++) {
+			x = gridV[i];
+			y = gridH[j];
+			xd = gridV[i+1] - x;
+			yd = gridH[j+1] - y;
 
-	imshow("Spot", spot);
-	waitKey(0);
+			Mat ogSpot = image(Rect(x, y, xd, yd));
+			Mat spot = ctrImg(Rect(x, y, xd, yd));
+			Mat spot_ = spot.clone() * 255;
+			//spot = resizeSpot(spot);
 
-	float c1 = getMaxCenter(spot), c2 = calculateSpotK(spot);
+			//imshow("Spot", spot);
+			//waitKey(0);
 
-	Point pos1, pos2;
-	minMaxLoc(abs(spot - c1), NULL, NULL, &pos1, NULL);
-	minMaxLoc(abs(spot - c2), NULL, NULL, &pos2, NULL);
+			c1 = getMaxCenter(spot_);
+			c2 = calculateSpotK(spot_);
 
-	PCA pca = getPCA(spot);
-	IKM(spot, pca, pos1, pos2);
+			Point pos1, pos2;
+			minMaxLoc(abs(spot_ - c1), NULL, NULL, &pos1, NULL);
+			//minMaxLoc(abs(spot_ - c2), NULL, NULL, &pos2, NULL);
+			pos2.x = spot.cols / 2; pos2.y = spot.rows / 2;
+
+			PCA pca = getPCA(spot_, PCAset);
+			IKM(spot, PCAset, pca, pos1, pos2, s);
+		}
+	}
 
 	return true;
 }
@@ -81,7 +97,7 @@ float calculateSpotK(Mat image) {
 	int randVal = 500;
 
 	for (int i = 0; i < numIter; i++) {
-		std::printf("- Iteration %d:\n", i + 1);
+		//std::printf("- Iteration %d:\n", i + 1);
 		float minMax = upBound;
 		for (int j = 0; j < 12; j++) {
 			double max;
@@ -113,16 +129,16 @@ float calculateSpotK(Mat image) {
 			}
 
 			minMaxLoc(stripped, NULL, &max);
-			std::printf("Max found: %.4f\n", max);
+			//std::printf("Max found: %.4f\n", max);
 			if (max < minMax/* && max > lowBound && max < upBound*/) minMax = (float)max;
 		}
-		std::printf("Minmax chosen: %.4f\n\n", minMax);
+		//std::printf("Minmax chosen: %.4f\n\n", minMax);
 		//temp_k += minMax;
 		temp_k = min(temp_k, minMax);
 	}
 	float k = temp_k / numIter;
 
-	std::printf("k trovato: %.4f\n\n", k);
+	//std::printf("k trovato: %.4f\n\n", k);
 
 
 	return k;
@@ -138,7 +154,7 @@ float getMaxCenter(Mat image) {
 	return (float) max;
 }
 
-PCA getPCA(Mat spot) {
+PCA getPCA(Mat spot, Mat &PCAset_) {
 	int kradius = 5;
 	int ksize = kradius * 2 + 1;
 	double ksigma = 2.5;
@@ -151,16 +167,15 @@ PCA getPCA(Mat spot) {
 
 	// # 1 : pixel intensity
 	Mat intensity = spot.clone().reshape(1, 1);
-	PCAset.row(0) = intensity;
+
+	intensity.copyTo(PCAset.row(0));
 
 	// 2 : gaussian filtered image
 	Mat gaussian = Mat();
 	GaussianBlur(spot, gaussian, Size(ksize, ksize), ksigma, ksigma);
 
-	imshow("Gauss", gaussian);
-	waitKey(0);
+	gaussian.clone().reshape(1, 1).copyTo(PCAset.row(1));
 
-	PCAset.row(1) = gaussian.clone().reshape(1, 1);
 
 	// #3-4 : mean and STD
 	Mat addIntensity = Mat();
@@ -198,20 +213,29 @@ PCA getPCA(Mat spot) {
 
 	for (int j = 0; j < width; j++) Col.col(j) = j;
 
-	PCAset.row(2) = intMean.clone().reshape(1, 1);
-	PCAset.row(3) = intStd.clone().reshape(1, 1);
+	intMean.clone().reshape(1, 1).copyTo(PCAset.row(2));
+	intStd.clone().reshape(1, 1).copyTo(PCAset.row(3));
 
 
-	PCAset.row(4) = Eurodis.clone().reshape(1, 1);
-	PCAset.row(5) = Citydis.clone().reshape(1, 1);
+	Eurodis.clone().reshape(1, 1).copyTo(PCAset.row(4));
+	Citydis.clone().reshape(1, 1).copyTo(PCAset.row(5));
 
-	PCAset.row(6) = Row.clone().reshape(1, 1);
-	PCAset.row(7) = Col.clone().reshape(1, 1);
+	Row.clone().reshape(1, 1).copyTo(PCAset.row(6));
+	Col.clone().reshape(1, 1).copyTo(PCAset.row(7));
+
+	PCAset = PCAset.t();
 
 	PCA pca(PCAset, Mat(), PCA::DATA_AS_ROW, 3);
 
+	/*Mat means;
+	repeat(pca.mean, 8, 1, means);
+	Mat Xc = PCAset - means;*/
+
+	PCAset_ = PCAset;
+
 	return pca;
 }
+
 
 float eucDist(Mat col1, Mat col2) {
 	Mat diff = col1 - col2;
@@ -221,20 +245,64 @@ float eucDist(Mat col1, Mat col2) {
 	return result.at<float>(0,0);
 }
 
-bool IKM(Mat spot, PCA pca, Point p1, Point p2) {
-	Mat data = pca.eigenvectors;
-	int width = spot.cols, height = spot.rows;
-	int posF = width * p1.y + p1.x, posB = width * p2.y + p2.x;
 
-	int k = 2, dataSetLength = width * height, numberOfFeature = 3, numberOfIterations = 10;
+int getAvgDiameter(vector<int> gridH, vector<int> gridV) {
+	int bh = gridH.size(), bv = gridV.size();
+	float hsum = 0.0, vsum = 0.0, s = 0.0;
+	for (int i = 0; i < bh / 2; i++) hsum += gridH[2 * i + 1] - gridH[2 * i];
+	hsum *= 2.0 / bh;
+	for (int i = 0; i < bv / 2; i++) vsum += gridV[2 * i + 1] - gridV[2 * i];
+	vsum *= 2.0 / bv;
+	s = hsum + vsum;
+	return (int)s/2.0;
+}
+
+
+Mat adjustedCluster(Mat cluster, Mat spot, int s) {
+	int width = cluster.cols, height = cluster.rows;
+	Mat empty = Mat(height, width, CV_32FC1, float(0));
+	if (sum(spot)[0] < 0.004) return empty; // empty 
+	Mat test = empty.clone();
+	int radius = min(min(width, height),s)/2;
+	circle(test, Point(width / 2, height / 2), radius, 1.0, -1);
+
+	int ns = width * height;
+	int nf = (int)sum(cluster)[0];
+	// temptative
+	Mat testSpot;
+	threshold(spot, testSpot, 0.003, 1.0, THRESH_BINARY);
+	Mat effCluster = cluster.mul(testSpot);
+	nf = (int)sum(effCluster)[0];
+	//
+	Mat filtCluster = effCluster.mul(test);
+	int nc = (int)sum(filtCluster)[0];
+
+	bool test1 = nc < (3.14 * radius);
+	bool test2 = (nc >= (3.14 * radius)) && (nf > (ns * 0.9));
+
+	if (test1 || test2) return empty;
+	else return filtCluster;
+}
+
+
+// clustering methods
+bool IKM(Mat spot, Mat PCAset, PCA pca, Point p1, Point p2, int diameter) {
+	Mat data = pca.project(PCAset).t();
+	Mat visualData = data.clone();
+	normalize(visualData, visualData, 1.0, 0.0, NORM_MINMAX);
+
+	int width = spot.cols, height = spot.rows;
+	int posB = width * p1.y + p1.x, posF = width * p2.y + p2.x;
+
+	int k = 2, dataSetLength = width * height, numberOfFeature = 3, numberOfIterations = 20;
 
 	Mat memberShipMatrix = Mat(k, dataSetLength, CV_32FC1, float(0)),
 		centroidMatrix = Mat(3, k, CV_32FC1, float(0)),
 		objectiveFunctionSum = Mat(numberOfIterations, 1, CV_32FC1, float(0));
 
 	// centroidMatrix initialization
-	centroidMatrix.col(0) = data.col(posF); // foreground
-	centroidMatrix.col(1) = data.col(posB); // background
+	data.col(posF).copyTo(centroidMatrix.col(0)); // foreground
+	data.col(posB).copyTo(centroidMatrix.col(1)); // background
 
 	int iterations = 1;
 
@@ -263,12 +331,14 @@ bool IKM(Mat spot, PCA pca, Point p1, Point p2) {
 					numberOfElementsPerCluster.at<float>(0, z) += 1;
 				}
 			}
-			clusterSum.col(clusterNumber) += data.col(y);
+			Mat calc = (clusterSum.col(clusterNumber) + data.col(y));
+			calc.copyTo(clusterSum.col(clusterNumber));
 		}
 
 		Mat newCentroid = Mat(numberOfFeature, k, CV_32FC1, float(0));
 		for (int u = 0; u < k; u++) {
-			newCentroid.col(u) = clusterSum.col(u) / numberOfElementsPerCluster.at<float>(0, u);
+			Mat calc = clusterSum.col(u) / numberOfElementsPerCluster.at<float>(0, u);
+			calc.copyTo(newCentroid.col(u));
 		}
 
 		centroidMatrix = newCentroid;
@@ -294,10 +364,13 @@ bool IKM(Mat spot, PCA pca, Point p1, Point p2) {
 	float true1Mean = (float)(sum(true1)[0] / sum(trueM)[0]);
 	float true0Mean = (float)(sum(true0)[0] / sum(notTrueM)[0]);
 
-	if (true1Mean > true0Mean) trueM = notTrueM;
+	if (true1Mean < true0Mean) trueM = notTrueM;
 
-	imshow("kmeans filtered", true1);
-	waitKey(0);
+	trueM = adjustedCluster(trueM, spot, diameter);
+
+	Mat finalImg = trueM.mul(spot);
+	imshow("show", finalImg);
+	//waitKey(0);
 
 	return true;
 }
