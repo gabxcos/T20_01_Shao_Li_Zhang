@@ -4,7 +4,7 @@
 
 bool OpenCVSegmenter::preprocess() {
 	Mat img = getResImage().clone();
-	float k = calculateK(img);
+	float k = calculateKv2(img);
 	Mat ctrEnhImg = contrastEnhance(img, k);
 	ctrEnhImg = medianFilter(ctrEnhImg);
 
@@ -45,7 +45,7 @@ float calculateK(Mat image) {
 
 	float temp_k = 0.0;
 
-	float numIter = 40.0;
+	float numIter = 200.0;
 	float lowBound = 0.6, upBound = 0.9;
 
 	int sqSize = 15;
@@ -105,18 +105,103 @@ float calculateK(Mat image) {
 	return k;
 }
 
+float calculateKv2(Mat image) {
+	int width, height;
+	width = image.cols;
+	height = image.rows;
+
+	float temp_k = 0.0;
+
+	float numIter = 200.0;
+
+	int sqSize = 100;
+	int maxX = width / sqSize - 1;
+	int maxY = height / sqSize - 1;
+
+	float lowBound = mean(image)[0], upBound = 0.85;
+
+
+	// T-L
+	for (int x = 0; x < maxX; x++) {
+		float minMax = 1.0;
+		for (int y = 0; y < maxY; y++) {
+			double max;
+			Mat stripped;
+			stripped = image(Rect(x * sqSize, y * sqSize, sqSize, sqSize));
+			minMaxLoc(stripped, NULL, &max);
+			if (max < lowBound) max = lowBound;
+			if (max > upBound) max = upBound;
+			if (max < minMax) minMax = (float)max;
+		}
+		temp_k += minMax;
+	}
+	// T-R
+	for (int x = 0; x < maxX; x++) {
+		float minMax = 1.0;
+		for (int y = 0; y < maxY; y++) {
+			double max;
+			Mat stripped;
+			stripped = image(Rect(width - 1 - (x + 1) * sqSize, y * sqSize, sqSize, sqSize));
+			minMaxLoc(stripped, NULL, &max);
+			if (max < lowBound) max = lowBound;
+			if (max > upBound) max = upBound;
+			if (max < minMax) minMax = (float)max;
+		}
+		temp_k += minMax;
+	}
+	// B-R
+	for (int x = 0; x < maxX; x++) {
+		float minMax = 1.0;
+		for (int y = 0; y < maxY; y++) {
+			double max;
+			Mat stripped;
+			stripped = image(Rect(width - 1 - (x + 1) * sqSize, height - 1 - (y + 1) * sqSize, sqSize, sqSize));
+			minMaxLoc(stripped, NULL, &max);
+			if (max < lowBound) max = lowBound;
+			if (max > upBound) max = upBound;
+			if (max < minMax) minMax = (float)max;
+		}
+		temp_k += minMax;
+	}
+	// B-L
+	for (int x = 0; x < maxX; x++) {
+		float minMax = 1.0;
+		for (int y = 0; y < maxY; y++) {
+			double max;
+			Mat stripped;
+			stripped = image(Rect(x * sqSize, height - 1 - (y + 1) * sqSize, sqSize, sqSize));
+			minMaxLoc(stripped, NULL, &max);
+			if (max < lowBound) max = lowBound;
+			if (max > upBound) max = upBound;
+			if (max < minMax) minMax = (float)max;
+		}
+		temp_k += minMax;
+	}
+
+
+
+	float k = temp_k / (4.0 * maxX);
+
+	std::printf("k trovato: %.4f\n\n", k);
+
+	return k;
+}
+
 
 Mat contrastEnhance(Mat image, float k) {
 	float ctr = calculateContrast(image);
 	Mat contrastedImg = image;
 	for (int i = 0; i < image.rows; i++) {
 		for (int j = 0; j < image.cols; j++) {
-			if (contrastedImg.at<float>(i, j) > k) {
+			if (contrastedImg.at<float>(i, j) >= k) {
 				float currVal = contrastedImg.at<float>(i, j);
 				float newVal = currVal * ctr;
 				if (newVal > 1.0) newVal = 1.0;
 				contrastedImg.at<float>(i, j) = newVal;
 			}
+			/*else {
+				contrastedImg.at<float>(i, j) /= ctr;
+			}*/
 		}
 	}
 	return contrastedImg;

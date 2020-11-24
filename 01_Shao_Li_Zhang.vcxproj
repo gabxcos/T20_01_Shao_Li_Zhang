@@ -72,6 +72,8 @@
   <PropertyGroup Label="UserMacros" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <LinkIncremental>true</LinkIncremental>
+    <IncludePath>C:\Program Files (x86)\opencv\build\include;$(IncludePath)</IncludePath>
+    <LibraryPath>C:\Program Files (x86)\opencv\build\x64\vc15\lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
     <LinkIncremental>false</LinkIncremental>
@@ -95,7 +97,7 @@
     <Link>
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
-      <AdditionalDependencies>C:\Program Files (x86)\tiff\lib\tiff.lib;C:\Program Files (x86)\tiff\lib\tiffd.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>opencv_world440.lib;C:\Program Files (x86)\tiff\lib\tiff.lib;C:\Program Files (x86)\tiff\lib\tiffd.lib;kernel32.lib;user32.lib;gdi32.lib;winspool.lib;comdlg32.lib;advapi32.lib;shell32.lib;ole32.lib;oleaut32.lib;uuid.lib;odbc32.lib;odbccp32.lib;%(AdditionalDependencies)</AdditionalDependencies>
       <AdditionalLibraryDirectories>C:\Program Files (x86)\tiff\lib</AdditionalLibraryDirectories>
     </Link>
   </ItemDefinitionGroup>
@@ -153,6 +155,7 @@
     <ClCompile Include="microArrayMethods\opencv\gridding.cpp" />
     <ClCompile Include="microArrayMethods\opencv\OpenCVSegmenter.cpp" />
     <ClCompile Include="microArrayMethods\opencv\preprocessing.cpp" />
+    <ClCompile Include="microArrayMethods\opencv\results.cpp" />
     <ClCompile Include="microArrayMethods\opencv\segmentation.cpp" />
     <ClCompile Include="microArrayMethods\opencv\tests.cpp" />
   </ItemGroup>
@@ -160,6 +163,7 @@
     <ClInclude Include="Device.h" />
     <ClInclude Include="microArrayMethods\libtiff\LibtiffSegmenter.h" />
     <ClInclude Include="microArrayMethods\opencv\gridding.h" />
+    <ClInclude Include="microArrayMethods\opencv\results.h" />
     <ClInclude Include="microArrayMethods\opencv\OpenCVSegmenter.h" />
     <ClInclude Include="microArrayMethods\opencv\preprocessing.h" />
     <ClInclude Include="microArrayMethods\opencv\segmentation.h" />

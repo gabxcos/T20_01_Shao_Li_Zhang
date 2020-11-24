@@ -2,10 +2,11 @@
 
 using namespace std;
 
-Device::Device(int rows, int cols, vector<vector<int>> _controls)
+Device::Device(int rows, int cols, vector<vector<int>> _controls, int startX, int startY, int endX, int endY)
 {
 	setSize(rows, cols);
 	setControls(_controls);
+	setROI(startX, startY, endX, endY);
 	// feature checks
 	checkHasAngles();
 	checkIsDuplicated();

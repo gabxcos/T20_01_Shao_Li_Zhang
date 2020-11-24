@@ -10,15 +10,35 @@ bool OpenCVSegmenter::segmenting() {
 	float c1, c2;
 	Mat PCAset;
 
-	for (int i = 0; i < gridV.size() - 1; i++) {
-		for (int j = 0; j < gridH.size() - 1; j++) {
+	vector<vector<Spot>> spotMatrix;
+
+	// imageCounters
+	float spotNum = 0;
+	float spotSize = 0;
+	float spotRadius = 0;
+	float spotAlignError = 0;
+	float Hdispl = 0;
+	float Vdispl = 0;
+	int totBlocks = gridH.size() * gridV.size();
+	float bkg0 = 0;
+
+	float maxQbkg1 = 0;
+	float maxQbkg2 = 0;
+
+	int totBgNoise = 0;
+	int totBgArea = 0;
+
+	for (int j = 0; j < gridH.size() - 1; j++) {
+		vector<Spot> newRow;
+		for (int i = 0; i < gridV.size() - 1; i++) {
 			x = gridV[i];
 			y = gridH[j];
 			xd = gridV[i+1] - x;
 			yd = gridH[j+1] - y;
 
-			Mat ogSpot = image(Rect(x, y, xd, yd));
-			Mat spot = ctrImg(Rect(x, y, xd, yd));
+			Mat spot = image(Rect(x, y, xd, yd));
+			Mat saturatedSpot = ctrImg(Rect(x, y, xd, yd));
+
 			Mat spot_ = spot.clone() * 255;
 			//spot = resizeSpot(spot);
 
@@ -34,12 +54,134 @@ bool OpenCVSegmenter::segmenting() {
 			pos2.x = spot.cols / 2; pos2.y = spot.rows / 2;
 
 			PCA pca = getPCA(spot_, PCAset);
-			IKM(spot, PCAset, pca, pos1, pos2, s);
+			Mat cluster = IKM(spot, PCAset, pca, pos1, pos2, s);
+			Spot currSpot = Spot(spot.clone(), cluster.clone(), x, y);
+
+			if (currSpot.isFilled()) {
+				spotNum++;
+				spotSize += currSpot.getSignalArea();
+				spotRadius += currSpot.sizes.circle.radius;
+				Hdispl += currSpot.sizes.displ.left + currSpot.sizes.displ.right;
+				Vdispl += currSpot.sizes.displ.top + currSpot.sizes.displ.bottom;
+
+				int hErr = currSpot.sizes.displ.left - currSpot.sizes.displ.right;
+				int vErr = currSpot.sizes.displ.top - currSpot.sizes.displ.bottom;
+				hErr *= hErr;
+				vErr *= vErr;
+				float err = sqrt(hErr + vErr);
+				spotAlignError += err;
+			}
+
+			int tempBgArea = currSpot.getBackgroundArea();
+			int tempBgNoiseArea = currSpot.quality.backgroundNoise * tempBgArea;
+			totBgNoise += tempBgNoiseArea;
+			totBgArea += tempBgArea;
+
+			bkg0 += currSpot.getBackground();
+			float qBkg1 = currSpot.quality.localBackgroundVariability;
+			if (qBkg1 > maxQbkg1) maxQbkg1 = qBkg1;
+
+			Mat satDiff = spot != saturatedSpot;
+			int satArea = sum(satDiff)[0] / 255.0;
+			int totArea = spot.rows * spot.cols;
+			if ((satArea / totArea) < 0.1) currSpot.quality.saturationQuality = 1.0;
+			else currSpot.quality.saturationQuality = 0.0;
+
+			newRow.push_back(currSpot);
+			std::printf("\nSpot (%d - %d) segmented.\n", i+1, j+1);
+		}
+		spotMatrix.push_back(newRow);
+	}
+
+	spotSize /= spotNum;
+	spotRadius /= spotNum;
+	spotAlignError /= spotNum;
+	Hdispl /= spotNum;
+	Vdispl /= spotNum;
+	bkg0 /= totBlocks;
+
+	// Assest Qbgk1, create Qbgk2 and sizeQuality
+	for (int i = 0; i < spotMatrix.size(); i++) {
+		for (int j = 0; j < spotMatrix[0].size(); j++) {
+			Spot currSpot = spotMatrix[i][j];
+
+			currSpot.quality.localBackgroundVariability /= maxQbkg1;
+			if (isnan(currSpot.quality.localBackgroundVariability)) currSpot.quality.localBackgroundVariability = 1.0;
+
+			if (!currSpot.isFilled()) currSpot.quality.sizeQuality = -1.0;
+			else currSpot.quality.sizeQuality = exp(-1 * (abs(currSpot.getSignalArea() - spotSize)/spotSize));
+
+			float bgVal = currSpot.getBackground();
+			float locBgHigh = 1 - (bgVal / (bgVal + bkg0));
+			currSpot.quality.localBackgroundHighness = locBgHigh;
+			if (locBgHigh > maxQbkg2) maxQbkg2 = locBgHigh;
+
+			spotMatrix[i][j] = currSpot;
 		}
 	}
 
+	// Assest Qbgk2, create compositeQuality
+	for (int i = 0; i < spotMatrix.size(); i++) {
+		for (int j = 0; j < spotMatrix[0].size(); j++) {
+			Spot currSpot = spotMatrix[i][j];
+
+			currSpot.quality.localBackgroundHighness /= maxQbkg2;
+			spotQuality q = currSpot.quality;
+			if (q.saturationQuality == 0) q.compositeQuality = 0;
+			else {
+				q.compositeQuality = 1.0;
+				q.compositeQuality *= abs(q.sizeQuality);
+				q.compositeQuality *= q.signalToNoiseRatio; 
+				q.compositeQuality *= q.localBackgroundVariability;
+				q.compositeQuality *= q.localBackgroundHighness;
+			}
+			currSpot.quality = q;
+
+			spotMatrix[i][j] = currSpot;
+		}
+	}
+
+	setSpotMatrix(spotMatrix);
+
+	this->quality.avgSpotArea = spotSize;
+	this->quality.avgSpotDistance = (Hdispl + Vdispl) / 2.0;
+	this->quality.avgSpotRadius = spotRadius;
+
+	this->quality.backgroundNoise = (float)totBgNoise / (float)totBgArea;
+	this->quality.spotAlignment = 1 - (spotAlignError / this->quality.avgSpotDistance);
+
 	return true;
 }
+
+float OpenCVSegmenter::spotScore(Mat spot) {
+	if (mean(spot)[0] < 0.005) return 0.0;
+	spot = resizeSpot(spot);
+	if (spot.cols < 5 || spot.rows < 5) return 0.0;
+	Mat spot_ = spot.clone() * 255;
+	float c1, c2;
+	c1 = getMaxCenter(spot_);
+	c2 = calculateSpotK(spot_);
+
+	Point pos1, pos2;
+	minMaxLoc(abs(spot_ - c1), NULL, NULL, &pos1, NULL);
+	pos2.x = spot.cols / 2; pos2.y = spot.rows / 2;
+
+	Mat PCAset;
+	PCA pca = getPCA(spot_, PCAset);
+	Mat cluster = IKM(spot, PCAset, pca, pos1, pos2, min(spot.rows, spot.cols));
+
+	int width = cluster.cols, height = cluster.rows;
+	int totArea = width * height, signalArea = max((int)sum(cluster)[0], 1), bgArea = totArea - signalArea;
+	float sigMean = sum(spot.mul(cluster))[0] / signalArea;
+	Mat notCluster;
+	threshold(cluster, notCluster, 0.0, 1.0, THRESH_BINARY_INV);
+	float bgMean = sum(spot.mul(notCluster))[0] / bgArea;
+	sigMean *= 10.0;
+	bgMean *= 10.0;
+	float diff = sigMean - bgMean;
+	diff *= diff;
+	return diff; // gives a percentage score
+};
 
 Mat resizeSpot(Mat spot) {
 	int width = spot.cols, height = spot.rows;
@@ -93,7 +235,8 @@ float calculateSpotK(Mat image) {
 	float numIter = 10.0;
 	float lowBound = 0.6, upBound = 0.9;
 
-	int sqSize = 5;
+	int minSide = min(width, height);
+	int sqSize = minSide <= 5 ? max(1, minSide/2+1) : 5;
 	int randVal = 500;
 
 	for (int i = 0; i < numIter; i++) {
@@ -261,20 +404,23 @@ int getAvgDiameter(vector<int> gridH, vector<int> gridV) {
 Mat adjustedCluster(Mat cluster, Mat spot, int s) {
 	int width = cluster.cols, height = cluster.rows;
 	Mat empty = Mat(height, width, CV_32FC1, float(0));
-	if (sum(spot)[0] < 0.004) return empty; // empty 
+	double max;
+	minMaxLoc(spot, NULL, &max);
+	if (max < 0.1) return empty; // empty 
 	Mat test = empty.clone();
-	int radius = min(min(width, height),s)/2;
+	int radius = min(min(width, height),s)*(0.9)/2;
 	circle(test, Point(width / 2, height / 2), radius, 1.0, -1);
 
 	int ns = width * height;
 	int nf = (int)sum(cluster)[0];
 	// temptative
 	Mat testSpot;
-	threshold(spot, testSpot, 0.003, 1.0, THRESH_BINARY);
+	threshold(spot, testSpot, 0.1, 1.0, THRESH_BINARY);
 	Mat effCluster = cluster.mul(testSpot);
 	nf = (int)sum(effCluster)[0];
 	//
 	Mat filtCluster = effCluster.mul(test);
+	threshold(filtCluster, filtCluster, 0.1, 1.0, THRESH_BINARY);
 	int nc = (int)sum(filtCluster)[0];
 
 	bool test1 = nc < (3.14 * radius);
@@ -286,7 +432,7 @@ Mat adjustedCluster(Mat cluster, Mat spot, int s) {
 
 
 // clustering methods
-bool IKM(Mat spot, Mat PCAset, PCA pca, Point p1, Point p2, int diameter) {
+Mat IKM(Mat spot, Mat PCAset, PCA pca, Point p1, Point p2, int diameter) {
 	Mat data = pca.project(PCAset).t();
 	Mat visualData = data.clone();
 	normalize(visualData, visualData, 1.0, 0.0, NORM_MINMAX);
@@ -368,9 +514,5 @@ bool IKM(Mat spot, Mat PCAset, PCA pca, Point p1, Point p2, int diameter) {
 
 	trueM = adjustedCluster(trueM, spot, diameter);
 
-	Mat finalImg = trueM.mul(spot);
-	imshow("show", finalImg);
-	//waitKey(0);
-
-	return true;
+	return trueM;
 }
